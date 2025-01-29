@@ -4,7 +4,9 @@ import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox
 import PyPDF2
 import ollama
-from datetime import datetime
+from pytesseract import image_to_string
+from pdf2image import convert_from_path
+from PIL import Image
 
 # Set the model name and temperature
 MODEL_NAME = "DeepSeek-R1:1.5b"  # Replace with your desired model
@@ -38,14 +40,44 @@ def save_pdf_cache(cache):
     with open(PDF_CACHE_FILE, "w") as file:
         json.dump(cache, file, indent=4)
 
-# Function to extract text from a PDF file
+# Function to extract text from a PDF file using PyPDF2 and OCR
 def extract_text_from_pdf(pdf_path):
-    with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
+    text = ""
+    unreadable_pages = 0
+    total_pages = 0
+
+    try:
+        # Try extracting text using PyPDF2
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            total_pages = len(reader.pages)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+                else:
+                    unreadable_pages += 1
+    except Exception as e:
+        print(f"PyPDF2 extraction failed: {e}")
+
+    # If PyPDF2 fails or some pages are unreadable, use OCR
+    if unreadable_pages > 0:
+        try:
+            # Convert PDF pages to images
+            images = convert_from_path(pdf_path)
+            for image in images:
+                ocr_text = image_to_string(image)
+                text += ocr_text + "\n"
+        except Exception as e:
+            print(f"OCR extraction failed: {e}")
+
+    # Calculate the percentage of unreadable pages
+    unreadable_percentage = (unreadable_pages / total_pages * 100) if total_pages > 0 else 0
+
+    # Count the number of words
+    word_count = len(text.split())
+
+    return text, word_count, unreadable_percentage
 
 # Function to analyze all PDFs in a folder
 def analyze_pdfs(folder_path):
@@ -61,16 +93,25 @@ def analyze_pdfs(folder_path):
             # Check if the file is in the cache and hasn't been modified
             if pdf_path in cache and cache[pdf_path]["last_modified"] == last_modified:
                 text = cache[pdf_path]["text"]
+                word_count = cache[pdf_path]["word_count"]
+                unreadable_percentage = cache[pdf_path]["unreadable_percentage"]
             else:
                 # Extract text and update the cache
-                text = extract_text_from_pdf(pdf_path)
+                text, word_count, unreadable_percentage = extract_text_from_pdf(pdf_path)
                 cache[pdf_path] = {
                     "last_modified": last_modified,
-                    "text": text
+                    "text": text,
+                    "word_count": word_count,
+                    "unreadable_percentage": unreadable_percentage
                 }
                 new_files_analyzed += 1  # Increment the counter for new files
             
             all_text += f"--- {filename} ---\n{text}\n\n"
+            chat_history.config(state=tk.NORMAL)
+            chat_history.insert(tk.END, f"Analyzed: {filename}\n")
+            chat_history.insert(tk.END, f"Word count: {word_count}\n")
+            chat_history.insert(tk.END, f"Unreadable pages: {unreadable_percentage:.2f}%\n\n")
+            chat_history.config(state=tk.DISABLED)
     
     # Save the updated cache
     save_pdf_cache(cache)

@@ -21,6 +21,8 @@ DOCUMENT_CACHE_FILE = "document_cache.json"
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
 
+chat_history_list = []  # List to store the conversation history
+
 # Load the last used folder path
 def load_last_folder():
     if os.path.exists(LAST_FOLDER_FILE):
@@ -197,8 +199,11 @@ def chat_with_ai():
         chat_history.config(state=tk.NORMAL)
         chat_history.insert(tk.END, f"You: {user_input}\n")
         
-        # Combine the document text with the user input
-        full_prompt = f"{document_text}\n\nUser: {user_input}"
+        # Add the user's message to the chat history list
+        chat_history_list.append({"role": "user", "content": user_input})
+        
+        # Combine the document text with the chat history
+        full_prompt = f"{document_text}\n\n" + "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
         
         try:
             # Send the prompt to the AI
@@ -210,6 +215,9 @@ def chat_with_ai():
             
             ai_response = response['message']['content']
             chat_history.insert(tk.END, f"AI: {ai_response}\n")
+            
+            # Add the AI's response to the chat history list
+            chat_history_list.append({"role": "assistant", "content": ai_response})
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
         
@@ -221,6 +229,7 @@ def clear_chat_history():
     chat_history.config(state=tk.NORMAL)
     chat_history.delete("1.0", tk.END)
     chat_history.config(state=tk.DISABLED)
+    chat_history_list.clear()  # Clear the chat history list
 
 # Function to set the folder path
 def set_folder_path():

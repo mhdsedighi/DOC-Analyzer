@@ -77,13 +77,13 @@ def extract_text_from_pdf(pdf_path):
         except Exception as e:
             print(f"OCR extraction failed: {e}")
 
-    # Calculate the percentage of unreadable pages
-    unreadable_percentage = (unreadable_pages / total_pages * 100) if total_pages > 0 else 0
+    # Calculate the percentage of readable content
+    readable_percentage = 100 - (unreadable_pages / total_pages * 100) if total_pages > 0 else 100
 
     # Count the number of words
     word_count = len(text.split())
 
-    return text, word_count, unreadable_percentage
+    return text, word_count, readable_percentage
 
 # Function to extract text from a DOCX file
 def extract_text_from_docx(docx_path):
@@ -91,10 +91,10 @@ def extract_text_from_docx(docx_path):
         doc = Document(docx_path)
         text = "\n".join([para.text for para in doc.paragraphs])
         word_count = len(text.split())
-        return text, word_count, 0  # No unreadable content for DOCX
+        return text, word_count, 100  # Assume 100% readable for DOCX
     except Exception as e:
         print(f"DOCX extraction failed: {e}")
-        return "", 0, 100  # Assume 100% unreadable if extraction fails
+        return "", 0, 0  # Assume 0% readable if extraction fails
 
 # Function to extract text from a TXT file
 def extract_text_from_txt(txt_path):
@@ -102,10 +102,10 @@ def extract_text_from_txt(txt_path):
         with open(txt_path, "r", encoding="utf-8") as file:
             text = file.read()
         word_count = len(text.split())
-        return text, word_count, 0  # No unreadable content for TXT
+        return text, word_count, 100  # Assume 100% readable for TXT
     except Exception as e:
         print(f"TXT extraction failed: {e}")
-        return "", 0, 100  # Assume 100% unreadable if extraction fails
+        return "", 0, 0  # Assume 0% readable if extraction fails
 
 # Function to extract text from an XLSX file
 def extract_text_from_xlsx(xlsx_path):
@@ -116,10 +116,10 @@ def extract_text_from_xlsx(xlsx_path):
             for row in sheet.iter_rows(values_only=True):
                 text += " ".join([str(cell) for cell in row if cell is not None]) + "\n"
         word_count = len(text.split())
-        return text, word_count, 0  # No unreadable content for XLSX
+        return text, word_count, 100  # Assume 100% readable for XLSX
     except Exception as e:
         print(f"XLSX extraction failed: {e}")
-        return "", 0, 100  # Assume 100% unreadable if extraction fails
+        return "", 0, 0  # Assume 0% readable if extraction fails
 
 # Function to extract text from a PPTX file
 def extract_text_from_pptx(pptx_path):
@@ -131,10 +131,10 @@ def extract_text_from_pptx(pptx_path):
                 if hasattr(shape, "text"):
                     text += shape.text + "\n"
         word_count = len(text.split())
-        return text, word_count, 0  # No unreadable content for PPTX
+        return text, word_count, 100  # Assume 100% readable for PPTX
     except Exception as e:
         print(f"PPTX extraction failed: {e}")
-        return "", 0, 100  # Assume 100% unreadable if extraction fails
+        return "", 0, 0  # Assume 0% readable if extraction fails
 
 # Function to extract text from a document based on its file type
 def extract_text_from_document(file_path):
@@ -149,7 +149,7 @@ def extract_text_from_document(file_path):
     elif file_path.endswith(".pptx"):
         return extract_text_from_pptx(file_path)
     else:
-        return "", 0, 100  # Unsupported file type
+        return "", 0, 0  # Unsupported file type
 
 # Function to analyze all documents in a folder
 def analyze_documents(folder_path):
@@ -168,15 +168,15 @@ def analyze_documents(folder_path):
             if file_path in cache and cache[file_path]["last_modified"] == last_modified:
                 text = cache[file_path]["text"]
                 word_count = cache[file_path]["word_count"]
-                unreadable_percentage = cache[file_path]["unreadable_percentage"]
+                readable_percentage = cache[file_path]["readable_percentage"]
             else:
                 # Extract text and update the cache
-                text, word_count, unreadable_percentage = extract_text_from_document(file_path)
+                text, word_count, readable_percentage = extract_text_from_document(file_path)
                 cache[file_path] = {
                     "last_modified": last_modified,
                     "text": text,
                     "word_count": word_count,
-                    "unreadable_percentage": unreadable_percentage
+                    "readable_percentage": readable_percentage
                 }
                 new_files_analyzed += 1  # Increment the counter for new files
             
@@ -184,7 +184,7 @@ def analyze_documents(folder_path):
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Analyzed: {filename}\n")
             chat_history.insert(tk.END, f"Word count: {word_count}\n")
-            chat_history.insert(tk.END, f"Unreadable content: {unreadable_percentage:.2f}%\n\n")
+            chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n")
             chat_history.config(state=tk.DISABLED)
     
     # Save the updated cache

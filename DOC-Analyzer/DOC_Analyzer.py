@@ -3,6 +3,7 @@ import json
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox
 import PyPDF2
+from docx import Document
 import ollama
 from pytesseract import image_to_string
 from pdf2image import convert_from_path
@@ -14,7 +15,10 @@ TEMPERATURE = 0.7  # Adjust the temperature as needed
 
 # File paths for saving last folder and cache
 LAST_FOLDER_FILE = "last_folder.txt"
-PDF_CACHE_FILE = "pdf_cache.json"
+DOCUMENT_CACHE_FILE = "document_cache.json"
+
+# Supported file extensions
+SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt"]
 
 # Load the last used folder path
 def load_last_folder():
@@ -28,16 +32,16 @@ def save_last_folder(folder_path):
     with open(LAST_FOLDER_FILE, "w") as file:
         file.write(folder_path)
 
-# Load the PDF cache
-def load_pdf_cache():
-    if os.path.exists(PDF_CACHE_FILE):
-        with open(PDF_CACHE_FILE, "r") as file:
+# Load the document cache
+def load_document_cache():
+    if os.path.exists(DOCUMENT_CACHE_FILE):
+        with open(DOCUMENT_CACHE_FILE, "r") as file:
             return json.load(file)
     return {}
 
-# Save the PDF cache
-def save_pdf_cache(cache):
-    with open(PDF_CACHE_FILE, "w") as file:
+# Save the document cache
+def save_document_cache(cache):
+    with open(DOCUMENT_CACHE_FILE, "w") as file:
         json.dump(cache, file, indent=4)
 
 # Function to extract text from a PDF file using PyPDF2 and OCR
@@ -79,26 +83,61 @@ def extract_text_from_pdf(pdf_path):
 
     return text, word_count, unreadable_percentage
 
-# Function to analyze all PDFs in a folder
-def analyze_pdfs(folder_path):
-    cache = load_pdf_cache()
+# Function to extract text from a DOCX file
+def extract_text_from_docx(docx_path):
+    try:
+        doc = Document(docx_path)
+        text = "\n".join([para.text for para in doc.paragraphs])
+        word_count = len(text.split())
+        return text, word_count, 0  # No unreadable content for DOCX
+    except Exception as e:
+        print(f"DOCX extraction failed: {e}")
+        return "", 0, 100  # Assume 100% unreadable if extraction fails
+
+# Function to extract text from a TXT file
+def extract_text_from_txt(txt_path):
+    try:
+        with open(txt_path, "r", encoding="utf-8") as file:
+            text = file.read()
+        word_count = len(text.split())
+        return text, word_count, 0  # No unreadable content for TXT
+    except Exception as e:
+        print(f"TXT extraction failed: {e}")
+        return "", 0, 100  # Assume 100% unreadable if extraction fails
+
+# Function to extract text from a document based on its file type
+def extract_text_from_document(file_path):
+    if file_path.endswith(".pdf"):
+        return extract_text_from_pdf(file_path)
+    elif file_path.endswith(".docx"):
+        return extract_text_from_docx(file_path)
+    elif file_path.endswith(".txt"):
+        return extract_text_from_txt(file_path)
+    else:
+        return "", 0, 100  # Unsupported file type
+
+# Function to analyze all documents in a folder
+def analyze_documents(folder_path):
+    cache = load_document_cache()
     all_text = ""
     new_files_analyzed = 0  # Track the number of new files analyzed
 
     for filename in os.listdir(folder_path):
-        if filename.endswith(".pdf"):
-            pdf_path = os.path.join(folder_path, filename)
-            last_modified = os.path.getmtime(pdf_path)
+        file_path = os.path.join(folder_path, filename)
+        file_ext = os.path.splitext(filename)[1].lower()
+
+        if file_ext in SUPPORTED_EXTENSIONS:
+            last_modified = os.path.getmtime(file_path)
             
             # Check if the file is in the cache and hasn't been modified
-            if pdf_path in cache and cache[pdf_path]["last_modified"] == last_modified:
-                text = cache[pdf_path]["text"]
-                word_count = cache[pdf_path]["word_count"]
-                unreadable_percentage = cache[pdf_path]["unreadable_percentage"]
+            if file_path in cache and cache[file_path]["last_modified"] == last_modified:
+                text = cache[file_path]["text"]
+                word_count = cache[file_path]["word_count"]
+                unreadable_percentage = cache[file_path]["unreadable_percentage"]
             else:
                 # Extract text and update the cache
-                text, word_count, unreadable_percentage = extract_text_from_pdf(pdf_path)
-                cache[pdf_path] = {
+                text, word_count, unreadable_percentage = extract_text_from_document(file_path)
+                cache[file_path] = {
                     "last_modified": last_modified,
                     "text": text,
                     "word_count": word_count,
@@ -110,11 +149,11 @@ def analyze_pdfs(folder_path):
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Analyzed: {filename}\n")
             chat_history.insert(tk.END, f"Word count: {word_count}\n")
-            chat_history.insert(tk.END, f"Unreadable pages: {unreadable_percentage:.2f}%\n\n")
+            chat_history.insert(tk.END, f"Unreadable content: {unreadable_percentage:.2f}%\n\n")
             chat_history.config(state=tk.DISABLED)
     
     # Save the updated cache
-    save_pdf_cache(cache)
+    save_document_cache(cache)
     return all_text, new_files_analyzed
 
 # Function to handle the chat with the AI
@@ -124,8 +163,8 @@ def chat_with_ai():
         chat_history.config(state=tk.NORMAL)
         chat_history.insert(tk.END, f"You: {user_input}\n")
         
-        # Combine the PDF text with the user input
-        full_prompt = f"{pdf_text}\n\nUser: {user_input}"
+        # Combine the document text with the user input
+        full_prompt = f"{document_text}\n\nUser: {user_input}"
         
         try:
             # Send the prompt to the AI
@@ -154,10 +193,10 @@ def set_folder_path():
         messagebox.showerror("Error", "Invalid folder path.")
         return
     
-    global pdf_text
-    pdf_text, new_files_analyzed = analyze_pdfs(folder_path)
+    global document_text
+    document_text, new_files_analyzed = analyze_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
-    chat_history.insert(tk.END, f"PDFs analyzed. {new_files_analyzed} new files were processed.\n")
+    chat_history.insert(tk.END, f"Documents analyzed. {new_files_analyzed} new files were processed.\n")
     chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
     
@@ -166,7 +205,7 @@ def set_folder_path():
 
 # Create the main window
 root = tk.Tk()
-root.title("PDF Analyzer and AI Chat")
+root.title("Document Analyzer and AI Chat")
 
 # Folder path entry
 folder_path_entry = tk.Entry(root, width=50)
@@ -182,7 +221,7 @@ browse_button = tk.Button(root, text="Browse", command=lambda: folder_path_entry
 browse_button.grid(row=0, column=1, padx=10, pady=10)
 
 # Analyze button
-analyze_button = tk.Button(root, text="Analyze PDFs", command=set_folder_path)
+analyze_button = tk.Button(root, text="Analyze Documents", command=set_folder_path)
 analyze_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display

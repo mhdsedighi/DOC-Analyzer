@@ -247,9 +247,13 @@ def set_folder_path():
 root = tk.Tk()
 root.title("Document Analyzer and AI Chat")
 
+# Configure grid weights to make the chat history box resizable
+root.grid_rowconfigure(1, weight=1)  # Make row 1 (chat history) resizable
+root.grid_columnconfigure(0, weight=1)  # Make column 0 resizable
+
 # Folder path entry
 folder_path_entry = tk.Entry(root, width=50)
-folder_path_entry.grid(row=0, column=0, padx=10, pady=10)
+folder_path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
 # Load the last used folder path
 last_folder = load_last_folder()
@@ -266,11 +270,11 @@ analyze_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display
 chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED)
-chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10)
+chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
 
 # User input box
 user_input_box = tk.Text(root, width=60, height=3)
-user_input_box.grid(row=2, column=0, padx=10, pady=10)
+user_input_box.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
 
 # Send button
 send_button = tk.Button(root, text="Send", command=chat_with_ai)

@@ -1,6 +1,6 @@
 import os
 import tkinter as tk
-from tkinter import filedialog, scrolledtext
+from tkinter import filedialog, scrolledtext, messagebox
 import PyPDF2
 import ollama
 
@@ -8,93 +8,95 @@ import ollama
 MODEL_NAME = "DeepSeek-R1:1.5b"  # Replace with your desired model
 TEMPERATURE = 0.7  # Adjust the temperature as needed
 
-# Initialize Ollama
-ollama.pull(MODEL_NAME)
-
+# Function to extract text from a PDF file
 def extract_text_from_pdf(pdf_path):
-    """Extract text from a PDF file."""
-    with open(pdf_path, "rb") as file:
+    with open(pdf_path, 'rb') as file:
         reader = PyPDF2.PdfReader(file)
         text = ""
         for page in reader.pages:
             text += page.extract_text()
     return text
 
-def analyze_pdfs_in_folder(folder_path):
-    """Analyze all PDFs in the folder and return their combined text."""
+# Function to analyze all PDFs in a folder
+def analyze_pdfs(folder_path):
     all_text = ""
     for filename in os.listdir(folder_path):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(folder_path, filename)
-            all_text += extract_text_from_pdf(pdf_path) + "\n\n"
+            text = extract_text_from_pdf(pdf_path)
+            all_text += f"--- {filename} ---\n{text}\n\n"
     return all_text
 
-def chat_with_ai(messages):
-    """Send messages to the AI model and get a response."""
-    response = ollama.chat(
-        model=MODEL_NAME,
-        messages=messages,
-        options={"temperature": TEMPERATURE}
-    )
-    return response["message"]["content"]
-
-def on_submit():
-    """Handle the submit button click."""
-    user_input = input_text.get("1.0", tk.END).strip()
+# Function to handle the chat with the AI
+def chat_with_ai():
+    user_input = user_input_box.get("1.0", tk.END).strip()
     if user_input:
-        # Add the user's message to the chat history
-        messages.append({"role": "user", "content": user_input})
+        chat_history.config(state=tk.NORMAL)
+        chat_history.insert(tk.END, f"You: {user_input}\n")
         
-        # Get the AI's response
-        response = chat_with_ai(messages)
+        # Combine the PDF text with the user input
+        full_prompt = f"{pdf_text}\n\nUser: {user_input}"
         
-        # Add the AI's response to the chat history
-        messages.append({"role": "assistant", "content": response})
+        try:
+            # Send the prompt to the AI
+            response = ollama.chat(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": full_prompt}],
+                options={"temperature": TEMPERATURE}
+            )
+            
+            ai_response = response['message']['content']
+            chat_history.insert(tk.END, f"AI: {ai_response}\n")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
         
-        # Display the conversation in the output text area
-        output_text.insert(tk.END, f"You: {user_input}\nAI: {response}\n\n")
-        input_text.delete("1.0", tk.END)
+        chat_history.config(state=tk.DISABLED)
+        user_input_box.delete("1.0", tk.END)
 
-def select_folder():
-    """Open a folder dialog and analyze PDFs in the selected folder."""
-    global pdf_text, messages
-    folder_path = filedialog.askdirectory()
-    if folder_path:
-        pdf_text = analyze_pdfs_in_folder(folder_path)
-        output_text.insert(tk.END, f"Analyzed PDFs in: {folder_path}\n\n")
-        
-        # Initialize the chat with the PDF text as context
-        messages = [
-            {"role": "system", "content": f"You are a helpful assistant. The following text is extracted from PDFs: {pdf_text}"}
-        ]
+# Function to set the folder path
+def set_folder_path():
+    folder_path = folder_path_entry.get().strip()
+    if not folder_path:
+        messagebox.showwarning("Warning", "Please enter a folder path.")
+        return
+    
+    if not os.path.isdir(folder_path):
+        messagebox.showerror("Error", "Invalid folder path.")
+        return
+    
+    global pdf_text
+    pdf_text = analyze_pdfs(folder_path)
+    chat_history.config(state=tk.NORMAL)
+    chat_history.insert(tk.END, "PDFs analyzed. You can now chat with the AI.\n")
+    chat_history.config(state=tk.DISABLED)
 
-# Initialize the main window
+# Create the main window
 root = tk.Tk()
-root.title("PDF Chat with AI")
+root.title("PDF Analyzer and AI Chat")
 
-# Create a frame for the input and output
-frame = tk.Frame(root)
-frame.pack(padx=10, pady=10)
+# Folder path entry
+folder_path_entry = tk.Entry(root, width=50)
+folder_path_entry.grid(row=0, column=0, padx=10, pady=10)
 
-# Output text area
-output_text = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=80, height=20)
-output_text.pack(pady=10)
+# Browse button
+browse_button = tk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
+browse_button.grid(row=0, column=1, padx=10, pady=10)
 
-# Input text area
-input_text = tk.Text(frame, wrap=tk.WORD, width=80, height=5)
-input_text.pack(pady=10)
+# Analyze button
+analyze_button = tk.Button(root, text="Analyze PDFs", command=set_folder_path)
+analyze_button.grid(row=0, column=2, padx=10, pady=10)
 
-# Submit button
-submit_button = tk.Button(frame, text="Submit", command=on_submit)
-submit_button.pack(pady=5)
+# Chat history display
+chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED)
+chat_history.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
 
-# Folder selection button
-folder_button = tk.Button(frame, text="Select Folder with PDFs", command=select_folder)
-folder_button.pack(pady=5)
+# User input box
+user_input_box = tk.Text(root, width=60, height=3)
+user_input_box.grid(row=2, column=0, padx=10, pady=10)
 
-# Global variables
-pdf_text = ""  # Stores the extracted text from PDFs
-messages = []  # Stores the chat history
+# Send button
+send_button = tk.Button(root, text="Send", command=chat_with_ai)
+send_button.grid(row=2, column=1, padx=10, pady=10)
 
-# Start the main loop
+# Run the application
 root.mainloop()

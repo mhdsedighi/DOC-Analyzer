@@ -11,9 +11,8 @@ from pytesseract import image_to_string
 from pdf2image import convert_from_path
 from PIL import Image
 
-# Set the model name and temperature
+# Set the model name
 MODEL_NAME = "DeepSeek-R1:1.5b"  # Replace with your desired model
-TEMPERATURE = 0.7  # Adjust the temperature as needed
 
 # File paths for saving last folder and cache
 LAST_FOLDER_FILE = "last_folder.txt"
@@ -206,7 +205,7 @@ def chat_with_ai():
             response = ollama.chat(
                 model=MODEL_NAME,
                 messages=[{"role": "user", "content": full_prompt}],
-                options={"temperature": TEMPERATURE}
+                options={"temperature": temperature_scale.get()}  # Use the slider value
             )
             
             ai_response = response['message']['content']
@@ -267,7 +266,7 @@ analyze_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display
 chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED)
-chat_history.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
+chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10)
 
 # User input box
 user_input_box = tk.Text(root, width=60, height=3)
@@ -280,6 +279,14 @@ send_button.grid(row=2, column=1, padx=10, pady=10)
 # Clear button
 clear_button = tk.Button(root, text="Clear", command=clear_chat_history)
 clear_button.grid(row=2, column=2, padx=10, pady=10)
+
+# Temperature slider
+temperature_label = tk.Label(root, text="Temperature:")
+temperature_label.grid(row=2, column=3, padx=10, pady=10)
+
+temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL)
+temperature_scale.set(0.7)  # Default temperature value
+temperature_scale.grid(row=2, column=4, padx=10, pady=10)
 
 # Run the application
 root.mainloop()

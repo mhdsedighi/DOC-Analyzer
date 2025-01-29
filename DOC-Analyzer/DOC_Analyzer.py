@@ -4,6 +4,8 @@ import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox
 import PyPDF2
 from docx import Document
+from openpyxl import load_workbook
+from pptx import Presentation
 import ollama
 from pytesseract import image_to_string
 from pdf2image import convert_from_path
@@ -18,7 +20,7 @@ LAST_FOLDER_FILE = "last_folder.txt"
 DOCUMENT_CACHE_FILE = "document_cache.json"
 
 # Supported file extensions
-SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt"]
+SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
 
 # Load the last used folder path
 def load_last_folder():
@@ -105,6 +107,35 @@ def extract_text_from_txt(txt_path):
         print(f"TXT extraction failed: {e}")
         return "", 0, 100  # Assume 100% unreadable if extraction fails
 
+# Function to extract text from an XLSX file
+def extract_text_from_xlsx(xlsx_path):
+    try:
+        workbook = load_workbook(xlsx_path)
+        text = ""
+        for sheet in workbook:
+            for row in sheet.iter_rows(values_only=True):
+                text += " ".join([str(cell) for cell in row if cell is not None]) + "\n"
+        word_count = len(text.split())
+        return text, word_count, 0  # No unreadable content for XLSX
+    except Exception as e:
+        print(f"XLSX extraction failed: {e}")
+        return "", 0, 100  # Assume 100% unreadable if extraction fails
+
+# Function to extract text from a PPTX file
+def extract_text_from_pptx(pptx_path):
+    try:
+        presentation = Presentation(pptx_path)
+        text = ""
+        for slide in presentation.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text"):
+                    text += shape.text + "\n"
+        word_count = len(text.split())
+        return text, word_count, 0  # No unreadable content for PPTX
+    except Exception as e:
+        print(f"PPTX extraction failed: {e}")
+        return "", 0, 100  # Assume 100% unreadable if extraction fails
+
 # Function to extract text from a document based on its file type
 def extract_text_from_document(file_path):
     if file_path.endswith(".pdf"):
@@ -113,6 +144,10 @@ def extract_text_from_document(file_path):
         return extract_text_from_docx(file_path)
     elif file_path.endswith(".txt"):
         return extract_text_from_txt(file_path)
+    elif file_path.endswith(".xlsx"):
+        return extract_text_from_xlsx(file_path)
+    elif file_path.endswith(".pptx"):
+        return extract_text_from_pptx(file_path)
     else:
         return "", 0, 100  # Unsupported file type
 

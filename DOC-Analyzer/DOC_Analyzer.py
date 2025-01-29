@@ -1,7 +1,7 @@
 import os
 import json
 import tkinter as tk
-from tkinter import filedialog, scrolledtext, messagebox
+from tkinter import filedialog, scrolledtext, messagebox, ttk
 import PyPDF2
 from docx import Document
 from openpyxl import load_workbook
@@ -10,9 +10,6 @@ import ollama
 from pytesseract import image_to_string
 from pdf2image import convert_from_path
 from PIL import Image
-
-# Set the model name
-MODEL_NAME = "DeepSeek-R1:1.5b"  # Replace with your desired model
 
 # File paths for saving last folder and cache
 LAST_FOLDER_FILE = "last_folder.txt"
@@ -46,6 +43,15 @@ def load_document_cache():
 def save_document_cache(cache):
     with open(DOCUMENT_CACHE_FILE, "w") as file:
         json.dump(cache, file, indent=4)
+
+# Function to fetch installed Ollama models
+def fetch_installed_models():
+    try:
+        models = ollama.list()  # Fetch the list of installed models
+        return [model["name"] for model in models.get("models", [])]
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to fetch models: {e}")
+        return []
 
 # Function to extract text from a PDF file using PyPDF2 and OCR
 def extract_text_from_pdf(pdf_path):
@@ -206,9 +212,10 @@ def chat_with_ai():
         full_prompt = f"{document_text}\n\n" + "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
         
         try:
-            # Send the prompt to the AI
+            # Send the prompt to the AI using the selected model
+            selected_model = model_var.get()
             response = ollama.chat(
-                model=MODEL_NAME,
+                model=selected_model,
                 messages=[{"role": "user", "content": full_prompt}],
                 options={"temperature": temperature_scale.get()}  # Use the slider value
             )
@@ -259,6 +266,15 @@ root.title("Document Analyzer and AI Chat")
 # Configure grid weights to make the chat history box resizable
 root.grid_rowconfigure(1, weight=1)  # Make row 1 (chat history) resizable
 root.grid_columnconfigure(0, weight=1)  # Make column 0 resizable
+
+# Fetch installed Ollama models
+installed_models = fetch_installed_models()
+
+# Dropdown for model selection
+model_var = tk.StringVar(root)
+model_var.set(installed_models[0] if installed_models else "No models found")  # Default to the first model
+model_dropdown = ttk.Combobox(root, textvariable=model_var, values=installed_models, state="readonly")
+model_dropdown.grid(row=0, column=3, padx=10, pady=10, sticky="e")
 
 # Folder path entry
 folder_path_entry = tk.Entry(root, width=50)

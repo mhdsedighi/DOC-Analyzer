@@ -173,3 +173,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+/DOC-Analyzer/last_folder.txt
+/DOC-Analyzer/pdf_cache.json

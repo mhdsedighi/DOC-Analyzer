@@ -217,6 +217,12 @@ def chat_with_ai():
         chat_history.config(state=tk.DISABLED)
         user_input_box.delete("1.0", tk.END)
 
+# Function to clear the chat history box
+def clear_chat_history():
+    chat_history.config(state=tk.NORMAL)
+    chat_history.delete("1.0", tk.END)
+    chat_history.config(state=tk.DISABLED)
+
 # Function to set the folder path
 def set_folder_path():
     folder_path = folder_path_entry.get().strip()
@@ -270,6 +276,10 @@ user_input_box.grid(row=2, column=0, padx=10, pady=10)
 # Send button
 send_button = tk.Button(root, text="Send", command=chat_with_ai)
 send_button.grid(row=2, column=1, padx=10, pady=10)
+
+# Clear button
+clear_button = tk.Button(root, text="Clear", command=clear_chat_history)
+clear_button.grid(row=2, column=2, padx=10, pady=10)
 
 # Run the application
 root.mainloop()

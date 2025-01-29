@@ -51,6 +51,8 @@ def extract_text_from_pdf(pdf_path):
 def analyze_pdfs(folder_path):
     cache = load_pdf_cache()
     all_text = ""
+    new_files_analyzed = 0  # Track the number of new files analyzed
+
     for filename in os.listdir(folder_path):
         if filename.endswith(".pdf"):
             pdf_path = os.path.join(folder_path, filename)
@@ -66,12 +68,13 @@ def analyze_pdfs(folder_path):
                     "last_modified": last_modified,
                     "text": text
                 }
+                new_files_analyzed += 1  # Increment the counter for new files
             
             all_text += f"--- {filename} ---\n{text}\n\n"
     
     # Save the updated cache
     save_pdf_cache(cache)
-    return all_text
+    return all_text, new_files_analyzed
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -111,9 +114,10 @@ def set_folder_path():
         return
     
     global pdf_text
-    pdf_text = analyze_pdfs(folder_path)
+    pdf_text, new_files_analyzed = analyze_pdfs(folder_path)
     chat_history.config(state=tk.NORMAL)
-    chat_history.insert(tk.END, "PDFs analyzed. You can now chat with the AI.\n")
+    chat_history.insert(tk.END, f"PDFs analyzed. {new_files_analyzed} new files were processed.\n")
+    chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
     
     # Save the folder path

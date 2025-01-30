@@ -260,7 +260,7 @@ def set_folder_path():
     global document_text
     document_text, new_files_read = read_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
-    chat_history.insert(tk.END, f"Documents read. {new_files_read} new files were processed.\n")
+    chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
     chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
     

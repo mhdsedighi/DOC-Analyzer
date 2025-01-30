@@ -325,7 +325,7 @@ clear_button = ttk.Button(root, text="Clear", command=clear_chat_history)
 clear_button.grid(row=2, column=2, padx=10, pady=10)
 
 # Temperature slider
-temperature_label = ttk.Label(root, text="Temperature:", background="#333333", foreground="white")
+temperature_label = ttk.Label(root, text="Innovation Factor:", background="#333333", foreground="white")
 temperature_label.grid(row=2, column=3, padx=10, pady=10)
 
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")

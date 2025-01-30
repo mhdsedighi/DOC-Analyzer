@@ -10,13 +10,14 @@ import ollama
 from pytesseract import image_to_string
 from pdf2image import convert_from_path
 from PIL import Image
+import win32com.client  # For handling old Microsoft Office formats
 
 # File paths for saving user data and cache
 USER_DATA_FILE = "user_data.json"
 DOCUMENT_CACHE_FILE = "document_cache.json"
 
 # Supported file extensions
-SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
+SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
 
 chat_history_list = []  # List to store the conversation history
 
@@ -108,6 +109,21 @@ def extract_text_from_docx(docx_path):
         print(f"DOCX extraction failed: {e}")
         return "", 0, 0  # Assume 0% readable if extraction fails
 
+# Function to extract text from a DOC file (old Word format)
+def extract_text_from_doc(doc_path):
+    try:
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False
+        doc = word.Documents.Open(doc_path)
+        text = doc.Content.Text
+        doc.Close()
+        word.Quit()
+        word_count = len(text.split())
+        return text, word_count, 100  # Assume 100% readable for DOC
+    except Exception as e:
+        print(f"DOC extraction failed: {e}")
+        return "", 0, 0  # Assume 0% readable if extraction fails
+
 # Function to extract text from a TXT file
 def extract_text_from_txt(txt_path):
     try:
@@ -133,6 +149,24 @@ def extract_text_from_xlsx(xlsx_path):
         print(f"XLSX extraction failed: {e}")
         return "", 0, 0  # Assume 0% readable if extraction fails
 
+# Function to extract text from an XLS file (old Excel format)
+def extract_text_from_xls(xls_path):
+    try:
+        excel = win32com.client.Dispatch("Excel.Application")
+        excel.Visible = False
+        workbook = excel.Workbooks.Open(xls_path)
+        text = ""
+        for sheet in workbook.Sheets:
+            for row in sheet.UsedRange.Rows:
+                text += " ".join([str(cell) for cell in row.Value if cell is not None]) + "\n"
+        workbook.Close()
+        excel.Quit()
+        word_count = len(text.split())
+        return text, word_count, 100  # Assume 100% readable for XLS
+    except Exception as e:
+        print(f"XLS extraction failed: {e}")
+        return "", 0, 0  # Assume 0% readable if extraction fails
+
 # Function to extract text from a PPTX file
 def extract_text_from_pptx(pptx_path):
     try:
@@ -148,18 +182,43 @@ def extract_text_from_pptx(pptx_path):
         print(f"PPTX extraction failed: {e}")
         return "", 0, 0  # Assume 0% readable if extraction fails
 
+# Function to extract text from a PPT file (old PowerPoint format)
+def extract_text_from_ppt(ppt_path):
+    try:
+        powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+        powerpoint.Visible = False
+        presentation = powerpoint.Presentations.Open(ppt_path)
+        text = ""
+        for slide in presentation.Slides:
+            for shape in slide.Shapes:
+                if hasattr(shape, "TextFrame"):
+                    text += shape.TextFrame.TextRange.Text + "\n"
+        presentation.Close()
+        powerpoint.Quit()
+        word_count = len(text.split())
+        return text, word_count, 100  # Assume 100% readable for PPT
+    except Exception as e:
+        print(f"PPT extraction failed: {e}")
+        return "", 0, 0  # Assume 0% readable if extraction fails
+
 # Function to extract text from a document based on its file type
 def extract_text_from_document(file_path):
     if file_path.endswith(".pdf"):
         return extract_text_from_pdf(file_path)
     elif file_path.endswith(".docx"):
         return extract_text_from_docx(file_path)
+    elif file_path.endswith(".doc"):
+        return extract_text_from_doc(file_path)
     elif file_path.endswith(".txt"):
         return extract_text_from_txt(file_path)
     elif file_path.endswith(".xlsx"):
         return extract_text_from_xlsx(file_path)
+    elif file_path.endswith(".xls"):
+        return extract_text_from_xls(file_path)
     elif file_path.endswith(".pptx"):
         return extract_text_from_pptx(file_path)
+    elif file_path.endswith(".ppt"):
+        return extract_text_from_ppt(file_path)
     else:
         return "", 0, 0  # Unsupported file type
 

@@ -163,11 +163,11 @@ def extract_text_from_document(file_path):
     else:
         return "", 0, 0  # Unsupported file type
 
-# Function to analyze all documents in a folder
-def analyze_documents(folder_path):
+# Function to read all documents in a folder
+def read_documents(folder_path):
     cache = load_document_cache()
     all_text = ""
-    new_files_analyzed = 0  # Track the number of new files analyzed
+    new_files_read = 0  # Track the number of new files read
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -190,18 +190,18 @@ def analyze_documents(folder_path):
                     "word_count": word_count,
                     "readable_percentage": readable_percentage
                 }
-                new_files_analyzed += 1  # Increment the counter for new files
+                new_files_read += 1  # Increment the counter for new files
             
             all_text += f"--- {filename} ---\n{text}\n\n"
             chat_history.config(state=tk.NORMAL)
-            chat_history.insert(tk.END, f"Analyzed: {filename}\n")
+            chat_history.insert(tk.END, f"Looked at: {filename}\n")
             chat_history.insert(tk.END, f"Word count: {word_count}\n")
             chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n")
             chat_history.config(state=tk.DISABLED)
     
     # Save the updated cache
     save_document_cache(cache)
-    return all_text, new_files_analyzed
+    return all_text, new_files_read
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -258,9 +258,9 @@ def set_folder_path():
         return
     
     global document_text
-    document_text, new_files_analyzed = analyze_documents(folder_path)
+    document_text, new_files_read = read_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
-    chat_history.insert(tk.END, f"Documents analyzed. {new_files_analyzed} new files were processed.\n")
+    chat_history.insert(tk.END, f"Documents read. {new_files_read} new files were processed.\n")
     chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
     
@@ -269,7 +269,7 @@ def set_folder_path():
 
 # Create the main window
 root = tk.Tk()
-root.title("Document Analyzer and AI Chat")
+root.title("AI Document Analyzer")
 
 # Set the background color of the main window to gray
 root.configure(bg="#333333")
@@ -304,9 +304,9 @@ folder_path_entry.insert(0, last_folder)
 browse_button = ttk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
 browse_button.grid(row=0, column=1, padx=10, pady=10)
 
-# Analyze button
-analyze_button = ttk.Button(root, text="Analyze Documents", command=set_folder_path)
-analyze_button.grid(row=0, column=2, padx=10, pady=10)
+# Read button
+read_button = ttk.Button(root, text="Read Documents", command=set_folder_path)
+read_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display
 chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
@@ -317,7 +317,7 @@ user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", ins
 user_input_box.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
 
 # Send button
-send_button = ttk.Button(root, text="Send", command=chat_with_ai)
+send_button = ttk.Button(root, text="Ask AI", command=chat_with_ai)
 send_button.grid(row=2, column=1, padx=10, pady=10)
 
 # Clear button

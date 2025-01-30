@@ -173,5 +173,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-/DOC-Analyzer/last_folder.txt
 /DOC-Analyzer/document_cache.json
+/DOC-Analyzer/user_data.json

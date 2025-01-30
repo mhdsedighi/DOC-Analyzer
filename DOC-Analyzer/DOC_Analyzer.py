@@ -11,8 +11,8 @@ from pytesseract import image_to_string
 from pdf2image import convert_from_path
 from PIL import Image
 
-# File paths for saving last folder and cache
-LAST_FOLDER_FILE = "last_folder.txt"
+# File paths for saving user data and cache
+USER_DATA_FILE = "user_data.json"
 DOCUMENT_CACHE_FILE = "document_cache.json"
 
 # Supported file extensions
@@ -20,17 +20,22 @@ SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".xlsx", ".pptx"]
 
 chat_history_list = []  # List to store the conversation history
 
-# Load the last used folder path
-def load_last_folder():
-    if os.path.exists(LAST_FOLDER_FILE):
-        with open(LAST_FOLDER_FILE, "r") as file:
-            return file.read().strip()
-    return ""
+# Load user data (last folder path, last selected model, and temperature)
+def load_user_data():
+    if os.path.exists(USER_DATA_FILE):
+        with open(USER_DATA_FILE, "r") as file:
+            return json.load(file)
+    return {"last_folder": "", "last_model": "", "temperature": 0.7}  # Default temperature
 
-# Save the last used folder path
-def save_last_folder(folder_path):
-    with open(LAST_FOLDER_FILE, "w") as file:
-        file.write(folder_path)
+# Save user data (last folder path, last selected model, and temperature)
+def save_user_data(last_folder, last_model, temperature):
+    user_data = {
+        "last_folder": last_folder,
+        "last_model": last_model,
+        "temperature": temperature
+    }
+    with open(USER_DATA_FILE, "w") as file:
+        json.dump(user_data, file, indent=4)
 
 # Load the document cache
 def load_document_cache():
@@ -230,6 +235,9 @@ def chat_with_ai():
         
         chat_history.config(state=tk.DISABLED)
         user_input_box.delete("1.0", tk.END)
+        
+        # Save the last used model, folder path, and temperature
+        save_user_data(folder_path_entry.get().strip(), selected_model, temperature_scale.get())
 
 # Function to clear the chat history box
 def clear_chat_history():
@@ -256,8 +264,8 @@ def set_folder_path():
     chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
     
-    # Save the folder path
-    save_last_folder(folder_path)
+    # Save the folder path, last used model, and temperature
+    save_user_data(folder_path, model_var.get(), temperature_scale.get())
 
 # Create the main window
 root = tk.Tk()
@@ -273,9 +281,15 @@ root.grid_columnconfigure(0, weight=1)  # Make column 0 resizable
 # Fetch installed Ollama models
 installed_models = fetch_installed_models()
 
+# Load user data (last folder path, last selected model, and temperature)
+user_data = load_user_data()
+last_folder = user_data.get("last_folder", "")
+last_model = user_data.get("last_model", "")
+last_temperature = user_data.get("temperature", 0.7)  # Default temperature
+
 # Dropdown for model selection
 model_var = tk.StringVar(root)
-model_var.set(installed_models[0] if installed_models else "No models found")  # Default to the first model
+model_var.set(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
 model_dropdown = ttk.Combobox(root, textvariable=model_var, values=installed_models, state="readonly")
 model_dropdown.grid(row=0, column=3, padx=10, pady=10, sticky="e")
 
@@ -283,10 +297,8 @@ model_dropdown.grid(row=0, column=3, padx=10, pady=10, sticky="e")
 folder_path_entry = ttk.Entry(root, width=50)
 folder_path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
-# Load the last used folder path
-last_folder = load_last_folder()
-if last_folder:
-    folder_path_entry.insert(0, last_folder)
+# Set the last used folder path
+folder_path_entry.insert(0, last_folder)
 
 # Browse button
 browse_button = ttk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
@@ -317,7 +329,7 @@ temperature_label = ttk.Label(root, text="Temperature:", background="#333333", f
 temperature_label.grid(row=2, column=3, padx=10, pady=10)
 
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
-temperature_scale.set(0.7)  # Default temperature value
+temperature_scale.set(last_temperature)  # Set the last used temperature
 temperature_scale.grid(row=2, column=4, padx=10, pady=10)
 
 # Run the application

@@ -263,6 +263,9 @@ def set_folder_path():
 root = tk.Tk()
 root.title("Document Analyzer and AI Chat")
 
+# Set the background color of the main window to gray
+root.configure(bg="#333333")
+
 # Configure grid weights to make the chat history box resizable
 root.grid_rowconfigure(1, weight=1)  # Make row 1 (chat history) resizable
 root.grid_columnconfigure(0, weight=1)  # Make column 0 resizable
@@ -277,7 +280,7 @@ model_dropdown = ttk.Combobox(root, textvariable=model_var, values=installed_mod
 model_dropdown.grid(row=0, column=3, padx=10, pady=10, sticky="e")
 
 # Folder path entry
-folder_path_entry = tk.Entry(root, width=50)
+folder_path_entry = ttk.Entry(root, width=50)
 folder_path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 
 # Load the last used folder path
@@ -286,34 +289,34 @@ if last_folder:
     folder_path_entry.insert(0, last_folder)
 
 # Browse button
-browse_button = tk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
+browse_button = ttk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
 browse_button.grid(row=0, column=1, padx=10, pady=10)
 
 # Analyze button
-analyze_button = tk.Button(root, text="Analyze Documents", command=set_folder_path)
+analyze_button = ttk.Button(root, text="Analyze Documents", command=set_folder_path)
 analyze_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display
-chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED)
+chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
 chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
 
 # User input box
-user_input_box = tk.Text(root, width=60, height=3)
+user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white")
 user_input_box.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
 
 # Send button
-send_button = tk.Button(root, text="Send", command=chat_with_ai)
+send_button = ttk.Button(root, text="Send", command=chat_with_ai)
 send_button.grid(row=2, column=1, padx=10, pady=10)
 
 # Clear button
-clear_button = tk.Button(root, text="Clear", command=clear_chat_history)
+clear_button = ttk.Button(root, text="Clear", command=clear_chat_history)
 clear_button.grid(row=2, column=2, padx=10, pady=10)
 
 # Temperature slider
-temperature_label = tk.Label(root, text="Temperature:")
+temperature_label = ttk.Label(root, text="Temperature:", background="#333333", foreground="white")
 temperature_label.grid(row=2, column=3, padx=10, pady=10)
 
-temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL)
+temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
 temperature_scale.set(0.7)  # Default temperature value
 temperature_scale.grid(row=2, column=4, padx=10, pady=10)
 

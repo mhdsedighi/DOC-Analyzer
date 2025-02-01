@@ -484,6 +484,9 @@ folder_path_dropdown = ttk.Combobox(root, values=user_data.get("last_folders", [
 folder_path_dropdown.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 folder_path_dropdown.bind("<<ComboboxSelected>>", on_folder_select)  # Bind selection event
 
+# Set the dropdown value to the last_folder
+folder_path_dropdown.set(last_folder)
+
 # Browse button
 browse_button = ttk.Button(root, text="Browse", command=browse_folder)  # Use the browse_folder function
 browse_button.grid(row=0, column=1, padx=10, pady=10)

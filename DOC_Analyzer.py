@@ -37,11 +37,14 @@ def load_user_data():
     return {"last_folder": "", "last_model": "", "temperature": 0.7, "last_folders": []}  # Default data
 
 # Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder, last_model, temperature):
+def save_user_data(last_folder=None, last_model=None, temperature=None):
     user_data = load_user_data()
-    user_data["last_folder"] = last_folder
-    user_data["last_model"] = last_model
-    user_data["temperature"] = temperature
+    if last_folder is not None:
+        user_data["last_folder"] = last_folder
+    if last_model is not None:
+        user_data["last_model"] = last_model
+    if temperature is not None:
+        user_data["temperature"] = temperature
 
     # Update the last 10 folders list
     if last_folder:
@@ -385,6 +388,21 @@ def browse_folder():
         folder_path_entry.insert(0, folder_path)  # Insert the new folder path
         update_folder_dropdown()  # Update the dropdown with the new path
 
+def delete_folder_path(event):
+    selected_path = folder_path_dropdown.get()  # Get the currently selected path
+    if selected_path:
+        user_data = load_user_data()  # Load the current user data
+        if selected_path in user_data["last_folders"]:
+            user_data["last_folders"].remove(selected_path)  # Remove the selected path
+            # Save the updated user data
+            with open(USER_DATA_FILE, "w") as file:
+                json.dump(user_data, file, indent=4)
+            # Update the dropdown with the new list of folders
+            folder_path_dropdown["values"] = user_data["last_folders"]
+            # Clear the current selection in the dropdown
+            folder_path_dropdown.set("")
+            messagebox.showinfo("Success", f"Folder path '{selected_path}' deleted.")     
+
 # Create the main window
 root = tk.Tk()
 root.title("AI Document Analyzer")
@@ -462,6 +480,9 @@ temperature_label.grid(row=2, column=3, padx=10, pady=10)
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
 temperature_scale.set(last_temperature)  # Set the last used temperature
 temperature_scale.grid(row=2, column=4, padx=10, pady=10)
+
+# Bind the Delete key to the folder_path_dropdown widget
+folder_path_dropdown.bind("<Delete>", delete_folder_path)
 
 # Run the application
 root.mainloop()

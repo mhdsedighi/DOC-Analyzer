@@ -407,7 +407,30 @@ def delete_folder_path(event):
             folder_path_dropdown["values"] = user_data["last_folders"]
             # Clear the current selection in the dropdown
             folder_path_dropdown.set("")
-            messagebox.showinfo("Success", f"Folder path '{selected_path}' deleted.")     
+
+            # Create a temporary popup
+            popup = tk.Toplevel(root)
+            popup.overrideredirect(True)  # Remove window decorations (no close button)
+            popup.geometry("400x50+{}+{}".format(
+                root.winfo_x() + root.winfo_width() // 2 - 50,  # Center horizontally
+                root.winfo_y() + root.winfo_height() // 2 - 25  # Center vertically
+            ))
+            popup.configure(bg="black")  # Set background color
+
+            # Add a label with the text "Deleted."
+            label = tk.Label(popup, text="Folder Path Deleted!", fg="white", bg="black", font=("Arial", 12 ,"bold"))
+            label.pack(pady=10)
+
+            # Function to fade out the popup
+            def fade_out(popup, alpha=1.0):
+                if alpha <= 0:
+                    popup.destroy()  # Close the popup
+                    return
+                popup.attributes("-alpha", alpha)  # Set transparency
+                root.after(150, fade_out, popup, alpha - 0.1)  # Reduce alpha every 150ms
+
+            # Start fading out after 500ms
+            root.after(500, fade_out, popup)   
 
 # Create the main window
 root = tk.Tk()

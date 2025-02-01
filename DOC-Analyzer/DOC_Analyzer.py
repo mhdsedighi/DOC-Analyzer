@@ -253,9 +253,9 @@ def read_documents(folder_path):
             
             all_text += f"--- {filename} ---\n{text}\n\n"
             chat_history.config(state=tk.NORMAL)
-            chat_history.insert(tk.END, f"Looked at: {filename}\n")
-            chat_history.insert(tk.END, f"Word count: {word_count}\n")
-            chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n")
+            chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
+            chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")
+            chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
             chat_history.config(state=tk.DISABLED)
     
     # Save the updated cache
@@ -267,7 +267,10 @@ def chat_with_ai():
     user_input = user_input_box.get("1.0", tk.END).strip()
     if user_input:
         chat_history.config(state=tk.NORMAL)
-        chat_history.insert(tk.END, f"You: {user_input}\n")
+        
+        # Insert the user's question
+        chat_history.insert(tk.END, "You: ", "user_tag")  # Tag for user text
+        chat_history.insert(tk.END, f"{user_input}\n", "user_question")  # Tag for user question
         
         # Add the user's message to the chat history list
         chat_history_list.append({"role": "user", "content": user_input})
@@ -285,7 +288,11 @@ def chat_with_ai():
             )
             
             ai_response = response['message']['content']
-            chat_history.insert(tk.END, f"AI: {ai_response}\n")
+            chat_history.insert(tk.END, "AI: ", "ai_tag")  # Tag for "AI:" 
+            chat_history.insert(tk.END, f"{ai_response}\n", "ai_response")  # Tag for AI response
+            
+            # Add a horizontal line after the AI's response
+            chat_history.insert(tk.END, "---\n", "separator")  # Tag for the separator line
             
             # Add the AI's response to the chat history list
             chat_history_list.append({"role": "assistant", "content": ai_response})
@@ -370,6 +377,14 @@ read_button.grid(row=0, column=2, padx=10, pady=10)
 # Chat history display
 chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
 chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
+
+# Configure tags for highlighting text
+chat_history.tag_configure("fileread_tag", foreground="yellow")  # Color for file read report
+chat_history.tag_configure("user_tag", foreground="cyan")  # Color for "You: "
+chat_history.tag_configure("user_question", foreground="lightblue", font=("Arial", 10, "bold"))
+chat_history.tag_configure("ai_tag", foreground="red")  # Color for "AI:"
+chat_history.tag_configure("ai_response", foreground="white")  # Color for AI response text
+chat_history.tag_configure("separator", foreground="gray")  # Color for the separator line
 
 # User input box
 user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white")

@@ -524,8 +524,16 @@ send_button = ttk.Button(root, text="Ask AI", command=chat_with_ai)
 send_button.grid(row=3, column=1, padx=10, pady=10)
 
 # Clear button
-clear_button = ttk.Button(root, text="Clear", command=clear_chat_history)
+clear_button = tk.Button(root, text="Clear", command=clear_chat_history ,bg="lightcoral" ,fg="black")
 clear_button.grid(row=3, column=2, padx=10, pady=10)
+
+# Copy to Clipboard button
+def copy_to_clipboard():
+    root.clipboard_clear()  # Clear the clipboard
+    root.clipboard_append(chat_history.get("1.0", tk.END))  # Copy chat history content to clipboard
+
+copy_button = ttk.Button(root, text="Copy History", command=copy_to_clipboard)
+copy_button.grid(row=4, column=2, padx=10, pady=10)
 
 # Temperature slider
 temperature_label = ttk.Label(root, text="Innovation Factor:", background="#333333", foreground="white")

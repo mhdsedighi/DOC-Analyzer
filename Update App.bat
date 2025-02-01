@@ -1,0 +1,1 @@
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://github.com/mhdsedighi/DOC-Analyzer/raw/refs/heads/master/DOC_Analyzer.py', (Split-Path -Leaf 'https://github.com/mhdsedighi/DOC-Analyzer/raw/refs/heads/master/DOC_Analyzer.py'))"

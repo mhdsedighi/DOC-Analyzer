@@ -37,7 +37,7 @@ def load_user_data():
     return {"last_folder": "", "last_model": "", "temperature": 0.7, "last_folders": []}  # Default data
 
 # Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder=None, last_model=None, temperature=None):
+def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None):
     user_data = load_user_data()
     if last_folder is not None:
         user_data["last_folder"] = last_folder
@@ -45,6 +45,18 @@ def save_user_data(last_folder=None, last_model=None, temperature=None):
         user_data["last_model"] = last_model
     if temperature is not None:
         user_data["temperature"] = temperature
+    if last_folders is not None:
+        user_data["last_folders"] = last_folders
+
+    # Update the last 10 folders list if a new folder is added
+    if last_folder and last_folder not in user_data.get("last_folders", []):
+        if "last_folders" not in user_data:
+            user_data["last_folders"] = []
+        user_data["last_folders"].insert(0, last_folder)
+        user_data["last_folders"] = user_data["last_folders"][:10]  # Keep only the last 10
+
+    with open(USER_DATA_FILE, "w") as file:
+        json.dump(user_data, file, indent=4)
 
     # Update the last 10 folders list
     if last_folder:
@@ -84,6 +96,7 @@ def browse_folder():
         folder_path_entry.delete(0, tk.END)  # Clear the entry widget
         folder_path_entry.insert(0, folder_path)  # Insert the new folder path
         update_folder_dropdown()  # Update the dropdown with the new path
+        save_user_data(last_folder=folder_path)  #save the new folder path
 
 # Function to extract text from a PDF file using PyPDF2 and OCR
 def extract_text_from_pdf(pdf_path):
@@ -394,6 +407,7 @@ def delete_folder_path(event):
         user_data = load_user_data()  # Load the current user data
         if selected_path in user_data["last_folders"]:
             user_data["last_folders"].remove(selected_path)  # Remove the selected path
+            save_user_data(last_folders=user_data["last_folders"]) # Save the updated user data
 
             # If the last_folders list is now empty, remove the last_folder as well
             if not user_data["last_folders"]:

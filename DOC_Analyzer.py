@@ -493,7 +493,7 @@ read_button = ttk.Button(root, text="Read Documents", command=set_folder_path)
 read_button.grid(row=0, column=2, padx=10, pady=10)
 
 # Chat history display
-chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
+chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
 chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
 
 # Configure tags for highlighting text
@@ -505,7 +505,7 @@ chat_history.tag_configure("ai_response", foreground="white")  # Color for AI re
 chat_history.tag_configure("separator", foreground="gray")  # Color for the separator line
 
 # User input box
-user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white")
+user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
 user_input_box.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
 
 # Send button

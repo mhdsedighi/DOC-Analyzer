@@ -173,5 +173,5 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-/document_cache.json
-/user_data.json
+/cache/document_cache.json
+/cache/user_data.json

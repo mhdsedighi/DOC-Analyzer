@@ -12,9 +12,13 @@ from pdf2image import convert_from_path
 from PIL import Image
 import win32com.client  # For handling old Microsoft Office formats
 
+# Define the cache folder and ensure it exists
+if not os.path.exists("cache"):
+    os.makedirs("cache")
+
 # File paths for saving user data and cache
-USER_DATA_FILE = "user_data.json"
-DOCUMENT_CACHE_FILE = "document_cache.json"
+USER_DATA_FILE = os.path.join("cache", "user_data.json")
+DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]

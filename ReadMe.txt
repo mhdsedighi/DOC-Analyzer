@@ -20,7 +20,6 @@ pip install ollama PyPDF2 pytesseract pdf2image pillow python-docx openpyxl pyth
 4-Run the Python script.
 *** Make sure your VPN or Proxy software is Not Acticve!
 
-go to "DOC-Analyzer\DOC-Analyzer"
 open a CMD in this Folder
 run this command:
 

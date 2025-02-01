@@ -371,7 +371,7 @@ def set_folder_path():
     document_text, new_files_read = read_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
     chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
-    chat_history.insert(tk.END, "You can now chat with the AI.\n")
+    chat_history.insert(tk.END, "You can now chat with the A.I.\n")
     chat_history.config(state=tk.DISABLED)
     chat_history.see(tk.END) #scrolling down
     
@@ -499,6 +499,14 @@ read_button.grid(row=0, column=2, padx=10, pady=10)
 chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
 chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
 
+# Chat history display
+chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
+chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
+
+# Sample text label
+typehere_label = ttk.Label(root, text="Chat with AI here: (Shift+Enter to send)", foreground="green",font=("Arial", 8))
+typehere_label.grid(row=2, column=0, columnspan=4, padx=10, pady=(10, 0), sticky="w")  # Place between chat_history and user_input_box
+
 # Configure tags for highlighting text
 chat_history.tag_configure("fileread_tag", foreground="yellow")  # Color for file read report
 chat_history.tag_configure("user_tag", foreground="cyan")  # Color for "You: "
@@ -509,28 +517,28 @@ chat_history.tag_configure("separator", foreground="gray")  # Color for the sepa
 
 # User input box
 user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
-user_input_box.grid(row=2, column=0, padx=10, pady=10, sticky="ew")
+user_input_box.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
 # Send button
 send_button = ttk.Button(root, text="Ask AI", command=chat_with_ai)
-send_button.grid(row=2, column=1, padx=10, pady=10)
+send_button.grid(row=3, column=1, padx=10, pady=10)
 
 # Clear button
 clear_button = ttk.Button(root, text="Clear", command=clear_chat_history)
-clear_button.grid(row=2, column=2, padx=10, pady=10)
+clear_button.grid(row=3, column=2, padx=10, pady=10)
 
 # Temperature slider
 temperature_label = ttk.Label(root, text="Innovation Factor:", background="#333333", foreground="white")
-temperature_label.grid(row=2, column=3, padx=10, pady=10)
+temperature_label.grid(row=3, column=3, padx=10, pady=10)
 
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
 temperature_scale.set(last_temperature)  # Set the last used temperature
-temperature_scale.grid(row=2, column=4, padx=10, pady=10)
+temperature_scale.grid(row=3, column=4, padx=10, pady=10)
 
 # Bind the Delete key to the folder_path_dropdown widget
 folder_path_dropdown.bind("<Delete>", delete_folder_path)
 # Bind the Enter key to trigger the chat_with_ai function
-user_input_box.bind("<Return>", lambda event: chat_with_ai())
+user_input_box.bind("<Shift-Return>", lambda event: chat_with_ai())
 
 # Run the application
 root.mainloop()

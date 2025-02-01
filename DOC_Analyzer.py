@@ -394,6 +394,12 @@ def delete_folder_path(event):
         user_data = load_user_data()  # Load the current user data
         if selected_path in user_data["last_folders"]:
             user_data["last_folders"].remove(selected_path)  # Remove the selected path
+
+            # If the last_folders list is now empty, remove the last_folder as well
+            if not user_data["last_folders"]:
+                user_data.pop("last_folder", None)  # Remove last_folder from memory
+                folder_path_entry.delete(0, tk.END)  # Clear the folder path entry
+
             # Save the updated user data
             with open(USER_DATA_FILE, "w") as file:
                 json.dump(user_data, file, indent=4)

@@ -324,6 +324,8 @@ def chat_with_ai():
         
         chat_history.config(state=tk.DISABLED)
         user_input_box.delete("1.0", tk.END)
+
+        chat_history.see(tk.END) #scrolling down
         
         # Save the last used model, folder path, and temperature
         save_user_data(folder_path_entry.get().strip(), selected_model, temperature_scale.get())
@@ -355,6 +357,7 @@ def set_folder_path():
     chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
     chat_history.insert(tk.END, "You can now chat with the AI.\n")
     chat_history.config(state=tk.DISABLED)
+    chat_history.see(tk.END) #scrolling down
     
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.get(), temperature_scale.get())

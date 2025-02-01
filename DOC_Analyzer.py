@@ -29,16 +29,27 @@ chat_history_list = []  # List to store the conversation history
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, "r") as file:
-            return json.load(file)
-    return {"last_folder": "", "last_model": "", "temperature": 0.7}  # Default temperature
+            data = json.load(file)
+            # Ensure the "last_folders" key exists in the loaded data
+            if "last_folders" not in data:
+                data["last_folders"] = []
+            return data
+    return {"last_folder": "", "last_model": "", "temperature": 0.7, "last_folders": []}  # Default data
 
-# Save user data (last folder path, last selected model, and temperature)
+# Save user data (last folder path, last selected model, temperature, and last 10 folders)
 def save_user_data(last_folder, last_model, temperature):
-    user_data = {
-        "last_folder": last_folder,
-        "last_model": last_model,
-        "temperature": temperature
-    }
+    user_data = load_user_data()
+    user_data["last_folder"] = last_folder
+    user_data["last_model"] = last_model
+    user_data["temperature"] = temperature
+
+    # Update the last 10 folders list
+    if last_folder:
+        if last_folder in user_data["last_folders"]:
+            user_data["last_folders"].remove(last_folder)  # Remove if already exists
+        user_data["last_folders"].insert(0, last_folder)  # Add to the beginning
+        user_data["last_folders"] = user_data["last_folders"][:10]  # Keep only the last 10
+
     with open(USER_DATA_FILE, "w") as file:
         json.dump(user_data, file, indent=4)
 
@@ -62,6 +73,14 @@ def fetch_installed_models():
     except Exception as e:
         messagebox.showerror("Error", f"Failed to fetch models: {e}")
         return []
+
+# Function to handle folder browsing
+def browse_folder():
+    folder_path = filedialog.askdirectory()
+    if folder_path:
+        folder_path_entry.delete(0, tk.END)  # Clear the entry widget
+        folder_path_entry.insert(0, folder_path)  # Insert the new folder path
+        update_folder_dropdown()  # Update the dropdown with the new path
 
 # Function to extract text from a PDF file using PyPDF2 and OCR
 def extract_text_from_pdf(pdf_path):
@@ -318,6 +337,9 @@ def clear_chat_history():
 
 # Function to set the folder path
 def set_folder_path():
+    global document_text
+    document_text = ""  # Clear the previous document text
+
     folder_path = folder_path_entry.get().strip()
     if not folder_path:
         messagebox.showwarning("Warning", "Please enter a folder path.")
@@ -327,7 +349,7 @@ def set_folder_path():
         messagebox.showerror("Error", "Invalid folder path.")
         return
     
-    global document_text
+    # Read documents from the new folder
     document_text, new_files_read = read_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
     chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
@@ -336,6 +358,29 @@ def set_folder_path():
     
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.get(), temperature_scale.get())
+
+    # Update the dropdown with the latest folder paths
+    update_folder_dropdown()
+
+# Function to update the folder dropdown with the last 10 used paths
+def update_folder_dropdown():
+    user_data = load_user_data()
+    folder_path_dropdown["values"] = user_data.get("last_folders", [])
+    folder_path_dropdown.set(folder_path_entry.get().strip())  # Sync dropdown with entry
+
+# Function to handle folder path selection from the dropdown
+def on_folder_select(event):
+    selected_path = folder_path_dropdown.get()
+    folder_path_entry.delete(0, tk.END)
+    folder_path_entry.insert(0, selected_path)
+
+# Function to handle folder browsing
+def browse_folder():
+    folder_path = filedialog.askdirectory()
+    if folder_path:
+        folder_path_entry.delete(0, tk.END)  # Clear the entry widget
+        folder_path_entry.insert(0, folder_path)  # Insert the new folder path
+        update_folder_dropdown()  # Update the dropdown with the new path
 
 # Create the main window
 root = tk.Tk()
@@ -370,8 +415,13 @@ folder_path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
 # Set the last used folder path
 folder_path_entry.insert(0, last_folder)
 
+# Folder path dropdown
+folder_path_dropdown = ttk.Combobox(root, values=user_data.get("last_folders", []), state="normal")
+folder_path_dropdown.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+folder_path_dropdown.bind("<<ComboboxSelected>>", on_folder_select)  # Bind selection event
+
 # Browse button
-browse_button = ttk.Button(root, text="Browse", command=lambda: folder_path_entry.insert(0, filedialog.askdirectory()))
+browse_button = ttk.Button(root, text="Browse", command=browse_folder)  # Use the browse_folder function
 browse_button.grid(row=0, column=1, padx=10, pady=10)
 
 # Read button

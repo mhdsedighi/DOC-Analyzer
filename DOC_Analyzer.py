@@ -526,6 +526,8 @@ temperature_scale.grid(row=2, column=4, padx=10, pady=10)
 
 # Bind the Delete key to the folder_path_dropdown widget
 folder_path_dropdown.bind("<Delete>", delete_folder_path)
+# Bind the Enter key to trigger the chat_with_ai function
+user_input_box.bind("<Return>", lambda event: chat_with_ai())
 
 # Run the application
 root.mainloop()

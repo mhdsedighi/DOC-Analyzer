@@ -1,4 +1,4 @@
-How to use the Doc Analyzer APP:
+How to use the DOC Analyzer APP:
 
 
 1-Install Ollama ( from here https://ollama.com/download )
@@ -34,7 +34,7 @@ pip install ollama PyPDF2 pytesseract pdf2image pillow python-docx openpyxl pyth
 ------------------------
 How to keep the APP updated
 ------------------------
-I am actively developing this app. So if you don't know how to work with Git, just click on 'updater' once in a while to get the latest python file.
+I am actively developing this app. So if you don't know how to work with Git, just click on 'Update App' once in a while to get the latest python file.
 
 
 ----------------

@@ -16,7 +16,7 @@ ollama run deepseek-r1:1.5
 
 
 3-Install required Python packages with CMD command:
-pip install ollama PyPDF2 pytesseract pdf2image pillow python-docx openpyxl python-pptx
+pip install ollama PyPDF2 pytesseract pdf2image pillow python-docx openpyxl python-pptx pyenchant
 
 
 4-Run the APP:

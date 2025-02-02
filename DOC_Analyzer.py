@@ -2,6 +2,8 @@ import os
 import json
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox, ttk
+from tkinter import Menu
+import enchant  # For spell checking
 import PyPDF2
 from docx import Document
 from openpyxl import load_workbook
@@ -444,7 +446,54 @@ def delete_folder_path(event):
                 root.after(150, fade_out, popup, alpha - 0.1)  # Reduce alpha every 150ms
 
             # Start fading out after 500ms
-            root.after(500, fade_out, popup)   
+            root.after(500, fade_out, popup)
+  
+# Function to check spelling and underline misspelled words
+def check_spelling():
+    user_input_box.tag_remove("misspelled", "1.0", "end")  # Clear previous misspelled tags
+    text = user_input_box.get("1.0", "end-1c")  # Get the text from the input widget
+    words = text.split()  # Split text into words
+    start_index = "1.0"  # Start checking from the beginning
+
+    for word in words:
+        # Calculate the end index of the current word
+        end_index = f"{start_index}+{len(word)}c"
+        
+        # Check if the word is misspelled
+        if not spell_checker.check(word):
+            user_input_box.tag_add("misspelled", start_index, end_index)  # Tag misspelled word
+        
+        # Move the start index to the next word
+        start_index = f"{end_index}+1c"
+
+# Function to show spelling suggestions on right-click
+def show_suggestions(event):
+    # Get the word under the cursor
+    word_start = user_input_box.index(f"@{event.x},{event.y} wordstart")
+    word_end = user_input_box.index(f"@{event.x},{event.y} wordend")
+    word = user_input_box.get(word_start, word_end)
+
+    # Check if the word is misspelled
+    if not spell_checker.check(word):
+        # Get suggestions for the misspelled word
+        suggestions = spell_checker.suggest(word)
+        
+        # Create a right-click menu
+        menu = Menu(root, tearoff=0)
+        for suggestion in suggestions:
+            menu.add_command(label=suggestion, command=lambda s=suggestion: replace_word(word_start, word_end, s))
+        
+        # Display the menu at the cursor position
+        menu.post(event.x_root, event.y_root)
+
+# Function to replace a misspelled word with a suggestion
+def replace_word(start, end, replacement):
+    user_input_box.delete(start, end)  # Delete the misspelled word
+    user_input_box.insert(start, replacement)  # Insert the suggested word
+    check_spelling()  # Recheck spelling after replacement
+
+# Initialize spell checker
+spell_checker = enchant.Dict("en_US")
 
 # Create the main window
 root = tk.Tk()
@@ -518,6 +567,15 @@ chat_history.tag_configure("separator", foreground="gray")  # Color for the sepa
 # User input box
 user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
 user_input_box.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
+
+# Configure the "misspelled" tag for underlining misspelled words
+user_input_box.tag_configure("misspelled", underline=True, underlinefg="lightcoral")
+
+# Bind the spell check function to the text widget
+user_input_box.bind("<KeyRelease>", lambda event: check_spelling())
+
+# Bind the right-click event to show spelling suggestions
+user_input_box.bind("<Button-3>", show_suggestions)
 
 # Send button
 send_button = ttk.Button(root, text="Ask AI", command=chat_with_ai)

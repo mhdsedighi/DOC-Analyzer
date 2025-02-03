@@ -277,8 +277,13 @@ def extract_text_from_document(file_path):
 # Function to read all documents in a folder
 def read_documents(folder_path):
     cache = load_document_cache()
-    all_text = ""
     new_files_read = 0  # Track the number of new files read
+
+    # Set the introductory line based on the checkbox state
+    if do_mention_page.get():
+        all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\nThe name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].\n\nFor example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.\n\nIf the document has no clear pages, still include the filename.\n\n"
+    else:
+        all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\n"
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -303,7 +308,8 @@ def read_documents(folder_path):
                 }
                 new_files_read += 1  # Increment the counter for new files
             
-            all_text += f"--- {filename} ---\n{text}\n\n"
+            # Add the filename and its content to the combined text
+            all_text += f"--- File: {filename} ---\n{text}\n\n"
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
             chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")
@@ -616,6 +622,17 @@ temperature_label.grid(row=3, column=3, padx=10, pady=10)
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
 temperature_scale.set(last_temperature)  # Set the last used temperature
 temperature_scale.grid(row=3, column=4, padx=10, pady=10)
+
+# Checkbox for toggling sample text
+do_mention_page = tk.BooleanVar()  # Variable to store the checkbox state
+do_mention_page_checkbox = ttk.Checkbutton(
+    root,
+    text="Tell Which Page",
+    variable=do_mention_page,
+    onvalue=True,
+    offvalue=False
+)
+do_mention_page_checkbox.grid(row=4, column=4, padx=10, pady=10, sticky="w")
 
 # Bind the Delete key to the folder_path_dropdown widget
 folder_path_dropdown.bind("<Delete>", delete_folder_path)

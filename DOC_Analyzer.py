@@ -85,8 +85,19 @@ def save_document_cache(cache):
 # Function to fetch installed Ollama models
 def fetch_installed_models():
     try:
-        models = ollama.list()  # Fetch the list of installed models
-        return [model["name"] for model in models.get("models", [])]
+        models_response = ollama.list()  # Fetch the list of installed models
+        print("DEBUG: Response from ollama.list():", models_response)  # Debugging output
+        
+        models_list = models_response.models  # Access the 'models' attribute directly
+
+        if not isinstance(models_list, list):
+            raise ValueError("Unexpected response format: 'models' key is not a list")
+
+        # Extract model names
+        model_names = [getattr(model, "model", "Unknown") for model in models_list]
+
+        return model_names
+
     except Exception as e:
         messagebox.showerror("Error", f"Failed to fetch models: {e}")
         return []

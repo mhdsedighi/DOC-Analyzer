@@ -32,14 +32,22 @@ def load_user_data():
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, "r") as file:
             data = json.load(file)
-            # Ensure the "last_folders" key exists in the loaded data
+            # Ensure the "last_folders" and "do_mention_page" keys exist in the loaded data
             if "last_folders" not in data:
                 data["last_folders"] = []
+            if "do_mention_page" not in data:
+                data["do_mention_page"] = False  # Default value if not present
             return data
-    return {"last_folder": "", "last_model": "", "temperature": 0.7, "last_folders": []}  # Default data
+    return {
+        "last_folder": "",
+        "last_model": "",
+        "temperature": 0.7,
+        "last_folders": [],
+        "do_mention_page": False  # Default value for the checkbox
+    }
 
 # Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None):
+def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None):
     user_data = load_user_data()
     if last_folder is not None:
         user_data["last_folder"] = last_folder
@@ -49,6 +57,8 @@ def save_user_data(last_folder=None, last_model=None, temperature=None, last_fol
         user_data["temperature"] = temperature
     if last_folders is not None:
         user_data["last_folders"] = last_folders
+    if do_mention_page is not None:
+        user_data["do_mention_page"] = do_mention_page
 
     # Update the last 10 folders list if a new folder is added
     if last_folder and last_folder not in user_data.get("last_folders", []):
@@ -280,7 +290,7 @@ def read_documents(folder_path):
     new_files_read = 0  # Track the number of new files read
 
     # Set the introductory line based on the checkbox state
-    if do_mention_page.get():
+    if do_mention_var.get():
         all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\nThe name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].\n\nFor example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.\n\nIf the document has no clear pages, still include the filename.\n\n"
     else:
         all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\n"
@@ -362,8 +372,13 @@ def chat_with_ai():
 
         chat_history.see(tk.END) #scrolling down
         
-        # Save the last used model, folder path, and temperature
-        save_user_data(folder_path_entry.get().strip(), selected_model, temperature_scale.get())
+        # Save the last used model, folder path, temperature, and checkbox state
+        save_user_data(
+            folder_path_entry.get().strip(),
+            selected_model,
+            temperature_scale.get(),
+            do_mention_page=do_mention_var.get()
+        )
 
 # Function to clear the chat history box
 def clear_chat_history():
@@ -536,6 +551,7 @@ user_data = load_user_data()
 last_folder = user_data.get("last_folder", "")
 last_model = user_data.get("last_model", "")
 last_temperature = user_data.get("temperature", 0.7)  # Default temperature
+do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox state
 
 # Dropdown for model selection
 model_var = tk.StringVar(root)
@@ -623,16 +639,16 @@ temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.
 temperature_scale.set(last_temperature)  # Set the last used temperature
 temperature_scale.grid(row=3, column=4, padx=10, pady=10)
 
-# Checkbox for toggling sample text
-do_mention_page = tk.BooleanVar()  # Variable to store the checkbox state
-do_mention_page_checkbox = ttk.Checkbutton(
+# Checkbox for toggling prompt
+do_mention_var = tk.BooleanVar(value=do_mention_page)  # Set the checkbox state
+do_mention_checkbox = ttk.Checkbutton(
     root,
     text="Tell Which Page",
-    variable=do_mention_page,
+    variable=do_mention_var,
     onvalue=True,
     offvalue=False
 )
-do_mention_page_checkbox.grid(row=4, column=4, padx=10, pady=10, sticky="w")
+do_mention_checkbox.grid(row=4, column=4, padx=10, pady=10, sticky="w")
 
 # Bind the Delete key to the folder_path_dropdown widget
 folder_path_dropdown.bind("<Delete>", delete_folder_path)

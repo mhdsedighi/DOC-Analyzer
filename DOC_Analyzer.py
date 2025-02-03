@@ -458,10 +458,11 @@ def check_spelling():
     for word in words:
         # Calculate the end index of the current word
         end_index = f"{start_index}+{len(word)}c"
-        
-        # Check if the word is misspelled
-        if not spell_checker.check(word):
-            user_input_box.tag_add("misspelled", start_index, end_index)  # Tag misspelled word
+        if is_english(word):
+            if not spell_checker.check(word):
+                user_input_box.tag_add("misspelled", start_index, end_index)  # Tag misspelled word
+        else:
+            pass
         
         # Move the start index to the next word
         start_index = f"{end_index}+1c"
@@ -491,6 +492,10 @@ def replace_word(start, end, replacement):
     user_input_box.delete(start, end)  # Delete the misspelled word
     user_input_box.insert(start, replacement)  # Insert the suggested word
     check_spelling()  # Recheck spelling after replacement
+
+def is_english(word):
+    english_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    return all(char in english_chars for char in word)
 
 # Initialize spell checker
 spell_checker = enchant.Dict("en_US")

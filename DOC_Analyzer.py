@@ -86,7 +86,7 @@ def save_document_cache(cache):
 def fetch_installed_models():
     try:
         models_response = ollama.list()  # Fetch the list of installed models
-        print("DEBUG: Response from ollama.list():", models_response)  # Debugging output
+        # print("DEBUG: Response from ollama.list():", models_response)  # Debugging output
         
         models_list = models_response.models  # Access the 'models' attribute directly
 

@@ -40,9 +40,9 @@ def load_user_data():
             return data
     return {
         "last_folder": "",
+        "last_folders": [],
         "last_model": "",
         "temperature": 0.7,
-        "last_folders": [],
         "do_mention_page": False  # Default value for the checkbox
     }
 

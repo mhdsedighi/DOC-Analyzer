@@ -337,6 +337,16 @@ def read_documents(folder_path):
 # Function to handle the chat with the AI
 def chat_with_ai():
     user_input = user_input_box.get("1.0", tk.END).strip()
+    global previous_message
+    global do_revise
+    previous_message=user_input
+
+    if do_revise:  #removing what has been revised from prompt
+        if chat_history_list:
+            chat_history_list.pop()
+            chat_history_list.pop()
+        do_revise=False
+
     if user_input:
         chat_history.config(state=tk.NORMAL)
         
@@ -538,10 +548,18 @@ def copy_to_clipboard():
     root.clipboard_clear()  # Clear the clipboard
     root.clipboard_append(chat_history.get("1.0", tk.END))  # Copy chat history content to clipboard
 
+def revise_last(event):
+    global do_revise
+    do_revise=True
+    user_input_box.delete("1.0", tk.END)  # Clear current input
+    user_input_box.insert(tk.END, previous_message)  # Insert previous message
+
 # -------------------------------------------------
 
 # Initialize spell checker
 spell_checker = enchant.Dict("en_US")
+previous_message=""
+do_revise=False
 
 # Create the main window
 root = tk.Tk()
@@ -602,7 +620,7 @@ chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DIS
 chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
 
 # Sample text label
-typehere_label = ttk.Label(root, text="Chat with AI here: (Shift+Enter to send)", foreground="green",font=("Arial", 8))
+typehere_label = ttk.Label(root, text="Chat with AI here: (Shift+↵ to send | ^ to revise previous)", foreground="green",font=("Arial", 8))
 typehere_label.grid(row=2, column=0, columnspan=4, padx=10, pady=(10, 0), sticky="w")  # Place between chat_history and user_input_box
 
 # Configure tags for highlighting text
@@ -656,6 +674,9 @@ do_mention_checkbox = ttk.Checkbutton(
     offvalue=False
 )
 do_mention_checkbox.grid(row=4, column=4, padx=10, pady=10, sticky="w")
+
+# Bind the UP key to recall the previous user message
+user_input_box.bind("<Up>", revise_last)
 
 # Bind the Delete key to the folder_path_dropdown widget
 folder_path_dropdown.bind("<Delete>", delete_folder_path)

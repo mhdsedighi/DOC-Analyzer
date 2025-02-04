@@ -286,15 +286,16 @@ def extract_text_from_document(file_path):
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
+    document_text = '' #this appers to fix adding extra texts when changing folder
     cache = load_document_cache()
     new_files_read = 0  # Track the number of new files read
 
     # Set the introductory line based on the checkbox state
     if do_mention_var.get():
         all_text = """Below are the contents of serveral files of the documents which I want to analyze.
-The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
-For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
-If the document has no clear pages, still include the filename."""
+                    The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
+                    For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
+                    If the document has no clear pages, still include the filename."""
     else:
         all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\n"
 
@@ -322,7 +323,7 @@ If the document has no clear pages, still include the filename."""
                 new_files_read += 1  # Increment the counter for new files
             
             # Add the filename and its content to the combined text
-            all_text += f"--- File: {filename} ---\n{text}\n\n"
+            all_text += f"--- Below is the content of a document with the name {filename} ---\n{text}\n\n"
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
             chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")

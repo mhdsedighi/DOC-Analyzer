@@ -533,6 +533,13 @@ def is_english(word):
     english_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
     return all(char in english_chars for char in word)
 
+# Copy to Clipboard button
+def copy_to_clipboard():
+    root.clipboard_clear()  # Clear the clipboard
+    root.clipboard_append(chat_history.get("1.0", tk.END))  # Copy chat history content to clipboard
+
+# -------------------------------------------------
+
 # Initialize spell checker
 spell_checker = enchant.Dict("en_US")
 
@@ -627,10 +634,6 @@ send_button.grid(row=3, column=1, padx=10, pady=10)
 clear_button = tk.Button(root, text="Clear", command=clear_chat_history ,bg="lightcoral" ,fg="black")
 clear_button.grid(row=3, column=2, padx=10, pady=10)
 
-# Copy to Clipboard button
-def copy_to_clipboard():
-    root.clipboard_clear()  # Clear the clipboard
-    root.clipboard_append(chat_history.get("1.0", tk.END))  # Copy chat history content to clipboard
 
 copy_button = ttk.Button(root, text="Copy History", command=copy_to_clipboard)
 copy_button.grid(row=4, column=2, padx=10, pady=10)

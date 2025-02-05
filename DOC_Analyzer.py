@@ -13,6 +13,8 @@ from pytesseract import image_to_string
 from pdf2image import convert_from_path
 from PIL import Image
 import win32com.client  # For handling old Microsoft Office formats
+import base64
+from io import BytesIO
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -24,6 +26,9 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
+
+# List of models that support image processing
+IMAGE_SUPPORTED_MODELS = ["llava", "bakllava", "cogvlm"]  # Add other image-supported models here
 
 chat_history_list = []  # List to store the conversation history
 
@@ -283,21 +288,47 @@ def extract_text_from_document(file_path):
         return extract_text_from_ppt(file_path)
     else:
         return "", 0, 0  # Unsupported file type
+        
+# Function to extract images from a PDF file and return them as base64 strings
+def extract_images_from_pdf(pdf_path):
+    images = []
+    try:
+        # Convert PDF pages to images
+        images = convert_from_path(pdf_path)
+        # Convert images to base64
+        images_base64 = []
+        for image in images:
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")
+            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            images_base64.append(img_base64)
+        return images_base64
+    except Exception as e:
+        print(f"Image extraction failed: {e}")
+        return []
+
+# Function to extract text and images from a PDF file
+def extract_text_and_images_from_pdf(pdf_path):
+    text, word_count, readable_percentage = extract_text_from_pdf(pdf_path)
+    images_base64 = extract_images_from_pdf(pdf_path)
+    return text, word_count, readable_percentage, images_base64
+
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
     document_text = '' #this appers to fix adding extra texts when changing folder
     cache = load_document_cache()
     new_files_read = 0  # Track the number of new files read
+    document_images = []  # List to store images from documents
 
     # Set the introductory line based on the checkbox state
     if do_mention_var.get():
-        all_text = """Below are the contents of serveral files of the documents which I want to analyze.
+        all_text = """Below are the contents of several files of the documents which I want to analyze.
                     The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
                     For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
                     If the document has no clear pages, still include the filename."""
     else:
-        all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\n"
+        all_text = "Below are the contents of several files of the documents which I want to analyze:\n\n"
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -311,28 +342,47 @@ def read_documents(folder_path):
                 text = cache[file_path]["text"]
                 word_count = cache[file_path]["word_count"]
                 readable_percentage = cache[file_path]["readable_percentage"]
+                images_base64 = cache[file_path].get("images", [])  # Retrieve cached images if available
             else:
-                # Extract text and update the cache
-                text, word_count, readable_percentage = extract_text_from_document(file_path)
+                # Extract text and images, then update the cache
+                if file_ext == ".pdf":
+                    text, word_count, readable_percentage, images_base64 = extract_text_and_images_from_pdf(file_path)
+                else:
+                    text, word_count, readable_percentage = extract_text_from_document(file_path)
+                    images_base64 = []  # No images for non-PDF files
+
                 cache[file_path] = {
                     "last_modified": last_modified,
                     "text": text,
                     "word_count": word_count,
-                    "readable_percentage": readable_percentage
+                    "readable_percentage": readable_percentage,
+                    "images": images_base64  # Cache images in base64 format
                 }
                 new_files_read += 1  # Increment the counter for new files
-            
+
             # Add the filename and its content to the combined text
-            all_text += f"--- Below is the content of a document with the name {filename} ---\n{text}\n\n"
+            all_text += f"--- Below is the content of a document with the name {filename} ---\n"
+
+            # Insert image placeholders in the text
+            for i, img_base64 in enumerate(images_base64):
+                all_text += f"\n[Image {i + 1} from {filename}]\n"
+
+            all_text += f"{text}\n\n"
+
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
             chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")
             chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
             chat_history.config(state=tk.DISABLED)
-    
+
+            # Add images to the document_images list if the model supports images
+            if model_var.get() in IMAGE_SUPPORTED_MODELS:
+                document_images.extend(images_base64)
+
     # Save the updated cache
     save_document_cache(cache)
-    return all_text, new_files_read
+    return all_text, new_files_read, document_images
+
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -363,9 +413,16 @@ def chat_with_ai():
         try:
             # Send the prompt to the AI using the selected model
             selected_model = model_var.get()
+            messages = [{"role": "user", "content": full_prompt}]
+
+            # If the model supports images, include them in the messages
+            if selected_model in IMAGE_SUPPORTED_MODELS and document_images:
+                for img_base64 in document_images:
+                    messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
+
             response = ollama.chat(
                 model=selected_model,
-                messages=[{"role": "user", "content": full_prompt}],
+                messages=messages,
                 options={"temperature": temperature_scale.get()}  # Use the slider value
             )
             

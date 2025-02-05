@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - master  # Change this to the branch you want to trigger the build
+      
+
+permissions:
+  contents: write  # This gives permission to create releases
 
 jobs:
   build:
@@ -43,3 +47,5 @@ jobs:
           name: Latest Build
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30,19 +30,19 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --clean DOC_Analyzer.py  # Change to your main script filename
+          pyinstaller --onefile --windowed --clean --name DocAnalyzer DOC_Analyzer.py  # Change to your main script filename
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: built-exe
-          path: dist/DOC_Analyzer.exe  # Change to match your script name
+          path: dist/DocAnalyzer.exe  # Change to match your script name
 
       - name: Release EXE (optional)
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/DOC_Analyzer.exe
+          files: dist/DocAnalyzer.exe
           tag_name: latest
           name: Latest Build
           draft: false

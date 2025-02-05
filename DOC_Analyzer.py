@@ -290,54 +290,55 @@ def extract_text_from_document(file_path):
         return extract_text_from_ppt(file_path)
     else:
         return "", 0, 0  # Unsupported file type
-        
-# Function to extract images from a PDF file and return them as base64 strings
-def extract_images_from_pdf(pdf_path):
-    images_base64 = []
 
-    try:
-        doc = fitz.open(pdf_path)
-        extracted = False  # Track if we found embedded images
-
-        # Extract embedded images (vector & raster)
-        for page in doc:
-            for img in page.get_images(full=True):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image = Image.open(BytesIO(image_bytes))
-
-                # Convert to base64
-                buffered = BytesIO()
-                image.save(buffered, format="PNG")
-                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                images_base64.append(img_base64)
-                extracted = True  # Mark as extracted
-
-        # Fallback: If no images found, use pdfplumber for raster images
-        if not extracted:
-            with pdfplumber.open(pdf_path) as pdf:
-                for page in pdf.pages:
-                    for img in page.images:
-                        image = Image.open(BytesIO(img["stream"].getvalue()))
-
-                        # Convert to base64
-                        buffered = BytesIO()
-                        image.save(buffered, format="PNG")
-                        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        images_base64.append(img_base64)
-
-        return images_base64
-
-    except Exception as e:
-        print(f"Image extraction failed: {e}")
-        return []
 
 # Function to extract text and images from a PDF file
 def extract_text_and_images_from_pdf(pdf_path):
-    text, word_count, readable_percentage = extract_text_from_pdf(pdf_path)
-    images_base64 = extract_images_from_pdf(pdf_path)
-    return text, word_count, readable_percentage, images_base64
+    text_content = []  # Stores extracted text per page
+    image_content = []  # Stores extracted images per page if enabled
+    unreadable_pages = 0
+    total_pages = 0
+    word_count = 0
+
+    try:
+        # Open the PDF file
+        with pdfplumber.open(pdf_path) as pdf:
+            total_pages = len(pdf.pages)
+            doc = fitz.open(pdf_path)  # Open with PyMuPDF for image extraction
+
+            for page_num in range(total_pages):
+                page_text = pdf.pages[page_num].extract_text()
+
+                if page_text:
+                    text_content.append({"page": page_num + 1, "content": page_text})
+                    word_count += len(page_text.split())
+                else:
+                    unreadable_pages += 1
+
+                if do_read_image:
+                    # Extract raster images from the page
+                    fitz_page = doc.load_page(page_num)
+                    image_list = fitz_page.get_images(full=True)
+
+                    for img_index, img in enumerate(image_list):
+                        xref = img[0]  # XREF of the image
+                        base_image = doc.extract_image(xref)
+                        image_bytes = base_image["image"]
+
+                        # Convert image bytes to base64
+                        image = Image.open(BytesIO(image_bytes))
+                        buffered = BytesIO()
+                        image.save(buffered, format="PNG")
+                        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+                        image_content.append({"page": page_num + 1, "content": img_base64})
+
+        readable_percentage = 100 - (unreadable_pages / total_pages * 100) if total_pages > 0 else 100
+        return text_content, image_content, word_count, readable_percentage
+
+    except Exception as e:
+        print(f"Extraction failed: {e}")
+        return [], [], 0, 0
 
 
 # Function to read all documents in a folder
@@ -349,12 +350,12 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state
     if do_mention_var.get():
-        all_text = """Below are the contents of several files of the documents which I want to analyze.
-                    The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
-                    For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
-                    If the document has no clear pages, still include the filename."""
+        all_text = """Below are the contents of several files for analysis.
+                    The filename and page number are mentioned with each content block.
+                    When responding, reference the source document and page number.
+                    Example: 'The data shows an increase in sales [report.pdf, page 3]'."""
     else:
-        all_text = "Below are the contents of several files of the documents which I want to analyze:\n\n"
+        all_text = "Below are the extracted contents of the documents:\n\n"
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -362,38 +363,34 @@ def read_documents(folder_path):
 
         if file_ext in SUPPORTED_EXTENSIONS:
             last_modified = os.path.getmtime(file_path)
-            
+
             # Check if the file is in the cache and hasn't been modified
             if file_path in cache and cache[file_path]["last_modified"] == last_modified:
-                text = cache[file_path]["text"]
+                text_content = cache[file_path]["text_content"]
+                image_content = cache[file_path]["image_content"] if do_read_image else []
                 word_count = cache[file_path]["word_count"]
                 readable_percentage = cache[file_path]["readable_percentage"]
-                images_base64 = cache[file_path].get("images", [])  # Retrieve cached images if available
             else:
-                # Extract text and images, then update the cache
-                if file_ext == ".pdf":
-                    text, word_count, readable_percentage, images_base64 = extract_text_and_images_from_pdf(file_path)
-                else:
-                    text, word_count, readable_percentage = extract_text_from_document(file_path)
-                    images_base64 = []  # No images for non-PDF files
-
+                text_content, image_content, word_count, readable_percentage = extract_text_and_images_from_pdf(
+                    file_path)
                 cache[file_path] = {
                     "last_modified": last_modified,
-                    "text": text,
+                    "text_content": text_content,
+                    "image_content": image_content if do_read_image else [],
                     "word_count": word_count,
-                    "readable_percentage": readable_percentage,
-                    "images": images_base64  # Cache images in base64 format
+                    "readable_percentage": readable_percentage
                 }
-                new_files_read += 1  # Increment the counter for new files
+                new_files_read += 1
 
-            # Add the filename and its content to the combined text
-            all_text += f"--- Below is the content of a document with the name {filename} ---\n"
+            all_text += f"--- Document: {filename} ---\n"
 
-            # Insert image placeholders in the text
-            for i, img_base64 in enumerate(images_base64):
-                all_text += f"\n[Image {i + 1} from {filename}]\n"
+            for item in text_content:
+                all_text += f"--- Page {item['page']} ---\n{item['content']}\n\n"
 
-            all_text += f"{text}\n\n"
+            if do_read_image:
+                for item in image_content:
+                    all_text += f"[Image on Page {item['page']}]\n"
+                    document_images.append(item)
 
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
@@ -401,11 +398,6 @@ def read_documents(folder_path):
             chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
             chat_history.config(state=tk.DISABLED)
 
-            # Add images to the document_images list if the model supports images
-            if model_var.get() in IMAGE_SUPPORTED_MODELS:
-                document_images.extend(images_base64)
-
-    # Save the updated cache
     save_document_cache(cache)
     return all_text, new_files_read, document_images
 
@@ -666,6 +658,7 @@ last_folder = user_data.get("last_folder", "")
 last_model = user_data.get("last_model", "")
 last_temperature = user_data.get("temperature", 0.7)  # Default temperature
 do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox state
+do_read_image=False
 
 # Dropdown for model selection
 model_var = tk.StringVar(root)

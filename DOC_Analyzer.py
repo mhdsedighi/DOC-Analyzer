@@ -438,19 +438,19 @@ def extract_content_from_pdf(pdf_path):
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
-    document_text = '' #this appers to fix adding extra texts when changing folder
+    document_text = [] #this appers to fix adding extra texts when changing folder
     cache = load_document_cache()
     new_files_read = 0  # Track the number of new files read
     document_images = []  # List to store images from documents
 
     # Set the introductory line based on the checkbox state
     if do_mention_var.get():
-        all_text = """Below are the contents of several files for analysis.
-                    The filename and page number are mentioned with each content block.
-                    When responding, reference the source document and page number.
-                    Example: 'The data shows an increase in sales [report.pdf, page 3]'."""
+        all_text = """Below are the contents of several files of the documents which I want to analyze.
+                    The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
+                    For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
+                    If the document has no clear pages, still include the filename."""
     else:
-        all_text = "Below are the extracted contents of the documents:\n\n"
+        all_text = "Below are the contents of several files of the documents which I want to analyze:\n\n"
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -459,32 +459,41 @@ def read_documents(folder_path):
         if file_ext in SUPPORTED_EXTENSIONS:
             last_modified = os.path.getmtime(file_path)
 
-            # Check if the file is in the cache and hasn't been modified
+            # Check if file is in cache and hasn't been modified
             if file_path in cache and cache[file_path]["last_modified"] == last_modified:
-                text_content = cache[file_path]["text_content"]
-                image_content = cache[file_path]["image_content"] if do_read_image else []
-                word_count = cache[file_path]["word_count"]
-                readable_percentage = cache[file_path]["readable_percentage"]
+                cached_data = cache[file_path]
+                text_content = cached_data["text_content"]
+                word_count = cached_data["word_count"]
+                readable_percentage = cached_data["readable_percentage"]
+                image_content = cached_data.get("image_content", [])
+
+                # **Re-extract if images were not previously stored and do_read_image is True**
+                if do_read_image and not image_content: # and not file_ext=="txt"
+                    text_content, image_content, word_count, readable_percentage = extract_content_from_document(file_path)
+
+                    # Update the cache with new images
+                    cache[file_path]["images"] = image_content
+                    save_document_cache(cache)
+                    new_files_read += 1  # Increment new file count if reprocessed
+
             else:
+                # Extract text and images, then update the cache
                 text_content, image_content, word_count, readable_percentage = extract_content_from_document(file_path)
+
                 cache[file_path] = {
                     "last_modified": last_modified,
                     "text_content": text_content,
-                    "image_content": image_content if do_read_image else [],
                     "word_count": word_count,
-                    "readable_percentage": readable_percentage
+                    "readable_percentage": readable_percentage,
+                    "image_content": image_content,  # Cache images with their page numbers
                 }
-                new_files_read += 1
+                save_document_cache(cache)
+                new_files_read += 1  # Increment counter for new files
 
-            all_text += f"--- Document: {filename} ---\n"
-
-            for item in text_content:
-                all_text += f"--- Page {item['page']} ---\n{item['content']}\n\n"
-
-            if do_read_image:
-                for item in image_content:
-                    all_text += f"[Image on Page {item['page']}]\n"
-                    document_images.append(item)
+            # Add filename and extracted content to combined text
+            all_text += f"--- Below is the content of a document with the name {filename} ---\n"
+            for text_data in text_content:
+                all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
 
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
@@ -492,7 +501,10 @@ def read_documents(folder_path):
             chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
             chat_history.config(state=tk.DISABLED)
 
-    save_document_cache(cache)
+            # Add images to document_images list if model supports images
+            if model_var.get() in IMAGE_SUPPORTED_MODELS:
+                document_images.extend(image_content)
+
     return all_text, new_files_read, document_images
 
 

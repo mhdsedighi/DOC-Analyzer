@@ -292,12 +292,12 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state
     if do_mention_var.get():
-        all_text = """Below are the contents of serveral files of the documents which I want to analyze.
+        all_text = """Below are the contents of several files of the documents which I want to analyze.
                     The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
                     For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
                     If the document has no clear pages, still include the filename."""
     else:
-        all_text = "Below are the contents of serveral files of the documents which I want to analyze:\n\n"
+        all_text = "Below are the contents of several files of the documents which I want to analyze:\n\n"
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)

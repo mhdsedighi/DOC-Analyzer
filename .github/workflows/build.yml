@@ -1,4 +1,4 @@
-name: Build EXE on Push
+name: Build EXE and Create ZIP
 
 on:
   push:
@@ -32,17 +32,20 @@ jobs:
         run: |
           pyinstaller --onefile --windowed --clean --name DocAnalyzer DOC_Analyzer.py  # Change to your main script filename
 
-      - name: Upload EXE artifact
+      - name: Create ZIP File
+        run: |
+          powershell Compress-Archive -Path dist\DocAnalyzer.exe, ReadMe.txt -DestinationPath dist\DocAnalyzer.zip
+
+      - name: Upload ZIP as Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: built-exe
-          path: dist/DocAnalyzer.exe  # Change to match your script name
+          name: MyCustomApp-ZIP
+          path: dist/DocAnalyzer.zip
 
-      - name: Release EXE (optional)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - name: Create Release and Upload ZIP
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/DocAnalyzer.exe
+          files: dist/DocAnalyzer.zip
           tag_name: latest
           name: Latest Build
           draft: false

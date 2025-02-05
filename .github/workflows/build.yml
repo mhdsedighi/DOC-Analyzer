@@ -34,7 +34,7 @@ jobs:
 
       - name: Create ZIP File
         run: |
-          powershell Compress-Archive -Path dist\DocAnalyzer.exe, ReadMe.txt -DestinationPath dist\DocAnalyzer.zip
+          powershell Compress-Archive -Path dist\DocAnalyzer.exe, ReadMe.txt , Update_App.bat -DestinationPath dist\DocAnalyzer.zip
 
       - name: Upload ZIP as Artifact
         uses: actions/upload-artifact@v4

@@ -4,17 +4,19 @@ import tkinter as tk
 from tkinter import filedialog, scrolledtext, messagebox, ttk
 from tkinter import Menu
 import enchant  # For spell checking
-import PyPDF2
 from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 import ollama
 from pytesseract import image_to_string
 from pdf2image import convert_from_path
-from PIL import Image
 import win32com.client  # For handling old Microsoft Office formats
+from io import BytesIO
+import fitz  # PyMuPDF
+import pdfplumber
 import base64
 from io import BytesIO
+from PIL import Image
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -291,18 +293,42 @@ def extract_text_from_document(file_path):
         
 # Function to extract images from a PDF file and return them as base64 strings
 def extract_images_from_pdf(pdf_path):
-    images = []
+    images_base64 = []
+
     try:
-        # Convert PDF pages to images
-        images = convert_from_path(pdf_path)
-        # Convert images to base64
-        images_base64 = []
-        for image in images:
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-            images_base64.append(img_base64)
+        doc = fitz.open(pdf_path)
+        extracted = False  # Track if we found embedded images
+
+        # Extract embedded images (vector & raster)
+        for page in doc:
+            for img in page.get_images(full=True):
+                xref = img[0]
+                base_image = doc.extract_image(xref)
+                image_bytes = base_image["image"]
+                image = Image.open(BytesIO(image_bytes))
+
+                # Convert to base64
+                buffered = BytesIO()
+                image.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                images_base64.append(img_base64)
+                extracted = True  # Mark as extracted
+
+        # Fallback: If no images found, use pdfplumber for raster images
+        if not extracted:
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    for img in page.images:
+                        image = Image.open(BytesIO(img["stream"].getvalue()))
+
+                        # Convert to base64
+                        buffered = BytesIO()
+                        image.save(buffered, format="PNG")
+                        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                        images_base64.append(img_base64)
+
         return images_base64
+
     except Exception as e:
         print(f"Image extraction failed: {e}")
         return []
@@ -462,6 +488,8 @@ def clear_chat_history():
 def set_folder_path():
     global document_text
     document_text = ""  # Clear the previous document text
+    global document_images
+    document_images= []
 
     folder_path = folder_path_entry.get().strip()
     if not folder_path:
@@ -473,7 +501,7 @@ def set_folder_path():
         return
     
     # Read documents from the new folder
-    document_text, new_files_read = read_documents(folder_path)
+    document_text, new_files_read, document_images =  read_documents(folder_path)
     chat_history.config(state=tk.NORMAL)
     chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
     chat_history.insert(tk.END, "You can now chat with the A.I.\n")

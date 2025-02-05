@@ -366,7 +366,7 @@ def extract_content_from_ppt(ppt_path):
 
 
 # Function to extract text from a document based on its file type
-def extract_content_from_document(file_path):
+def extract_content_from_file(file_path):
     if file_path.endswith(".pdf"):
         return extract_content_from_pdf(file_path)
     elif file_path.endswith(".docx"):
@@ -469,7 +469,7 @@ def read_documents(folder_path):
 
                 # **Re-extract if images were not previously stored and do_read_image is True**
                 if do_read_image and not image_content: # and not file_ext=="txt"
-                    text_content, image_content, word_count, readable_percentage = extract_content_from_document(file_path)
+                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path)
 
                     # Update the cache with new images
                     cache[file_path]["images"] = image_content
@@ -478,7 +478,7 @@ def read_documents(folder_path):
 
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, readable_percentage = extract_content_from_document(file_path)
+                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path)
 
                 cache[file_path] = {
                     "last_modified": last_modified,

@@ -72,7 +72,7 @@ def extract_content_from_doc(doc_path,do_read_image):
     try:
         word = win32com.client.Dispatch("Word.Application")
         word.Visible = False
-        doc = word.Documents.Open(doc_path)
+        doc = word.Documents.Open(os.path.abspath(doc_path))
 
         # Extract text
         text = doc.Content.Text.strip()

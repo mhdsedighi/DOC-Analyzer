@@ -185,6 +185,7 @@ def read_documents(folder_path):
             chat_history.config(state=tk.NORMAL)
             chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
             chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")
+            chat_history.insert(tk.END, f"Extracted images: {len(image_content)}\n\n", "fileread_tag")
             chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
             chat_history.config(state=tk.DISABLED)
 

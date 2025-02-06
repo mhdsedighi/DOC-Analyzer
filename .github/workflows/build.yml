@@ -30,7 +30,7 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --windowed --clean --name DocAnalyzer DOC_Analyzer.py  # Change to your main script filename
+          pyinstaller --onefile --windowed --clean --name DocAnalyzer --add-data "modules;modules" DOC_Analyzer.py  # Add modules folder
 
       - name: Create ZIP File
         run: |

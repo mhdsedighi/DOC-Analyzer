@@ -306,14 +306,6 @@ def on_folder_select(event):
     folder_path_entry.delete(0, tk.END)
     folder_path_entry.insert(0, selected_path)
 
-# Function to handle folder browsing
-def browse_folder():
-    folder_path = filedialog.askdirectory()
-    if folder_path:
-        folder_path_entry.delete(0, tk.END)  # Clear the entry widget
-        folder_path_entry.insert(0, folder_path)  # Insert the new folder path
-        update_folder_dropdown()  # Update the dropdown with the new path
-
 def delete_folder_path(event):
     selected_path = folder_path_dropdown.get()  # Get the currently selected path
     if selected_path:

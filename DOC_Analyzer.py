@@ -418,6 +418,11 @@ def revise_last(event):
     user_input_box.delete("1.0", tk.END)  # Clear current input
     user_input_box.insert(tk.END, previous_message)  # Insert previous message
 
+def on_toggle(var_name, *args):
+    """Update global variables dynamically based on checkbox state."""
+    globals()[var_name] = globals()[f"{var_name}_var"].get()
+    # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
+
 # -------------------------------------------------
 
 # Initialize spell checker
@@ -550,6 +555,14 @@ do_read_image_checkbox = ttk.Checkbutton(
     offvalue=False
 )
 do_read_image_checkbox.grid(row=5, column=3, padx=10, pady=10, sticky="w")
+
+# Store the BooleanVar references in globals()
+globals()["do_mention_page_var"] = do_mention_var
+globals()["do_read_image_var"] = do_read_image_var
+
+# Attach trace function
+do_mention_var.trace_add("write", lambda *args: on_toggle("do_mention_page", *args))
+do_read_image_var.trace_add("write", lambda *args: on_toggle("do_read_image", *args))
 
 # Bind the UP key to recall the previous user message
 user_input_box.bind("<Up>", revise_last)

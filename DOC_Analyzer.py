@@ -33,17 +33,20 @@ def load_user_data():
                 data["last_folders"] = []
             if "do_mention_page" not in data:
                 data["do_mention_page"] = False  # Default value if not present
+            if "do_read_image" not in data:
+                data["do_read_image"] = False  # Default value if not present
             return data
     return {
         "last_folder": "",
         "last_folders": [],
         "last_model": "",
         "temperature": 0.7,
-        "do_mention_page": False  # Default value for the checkbox
+        "do_mention_page": False,  # Default value for the checkbox
+        "do_read_image": False  # Default value for the checkbox
     }
 
 # Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None):
+def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None ,do_read_image=None):
     user_data = load_user_data()
     if last_folder is not None:
         user_data["last_folder"] = last_folder
@@ -55,6 +58,8 @@ def save_user_data(last_folder=None, last_model=None, temperature=None, last_fol
         user_data["last_folders"] = last_folders
     if do_mention_page is not None:
         user_data["do_mention_page"] = do_mention_page
+    if do_read_image is not None:
+        user_data["do_read_image"] = do_read_image
 
     # Update the last 10 folders list if a new folder is added
     if last_folder and last_folder not in user_data.get("last_folders", []):
@@ -150,8 +155,8 @@ def read_documents(folder_path):
                 image_content = cached_data.get("image_content", [])
 
                 # **Re-extract if images were not previously stored and do_read_image is True**
-                if do_read_image and not image_content: # and not file_ext=="txt"
-                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_read_image)
+                if do_read_image_var.get() and not image_content: # and not file_ext=="txt"
+                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_read_image_var.get())
 
                     # Update the cache with new images
                     cache[file_path]["images"] = image_content
@@ -254,7 +259,8 @@ def chat_with_ai():
             folder_path_entry.get().strip(),
             selected_model,
             temperature_scale.get(),
-            do_mention_page=do_mention_var.get()
+            do_mention_page=do_mention_var.get(),
+            do_read_image=do_read_image_var.get()
         )
 
 # Function to clear the chat history box
@@ -438,7 +444,7 @@ last_folder = user_data.get("last_folder", "")
 last_model = user_data.get("last_model", "")
 last_temperature = user_data.get("temperature", 0.7)  # Default temperature
 do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox state
-do_read_image=True
+do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
 
 # Dropdown for model selection
 model_var = tk.StringVar(root)

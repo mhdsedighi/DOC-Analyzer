@@ -490,7 +490,7 @@ chat_history.tag_configure("ai_response", foreground="white")  # Color for AI re
 chat_history.tag_configure("separator", foreground="gray")  # Color for the separator line
 
 # User input box
-user_input_box = tk.Text(root, width=60, height=3, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
+user_input_box = tk.Text(root, width=70, height=5, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
 user_input_box.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
 
 # Configure the "misspelled" tag for underlining misspelled words
@@ -508,7 +508,7 @@ send_button.grid(row=3, column=1, padx=10, pady=10)
 
 # Clear button
 clear_button = tk.Button(root, text="Clear", command=clear_chat_history ,bg="lightcoral" ,fg="black")
-clear_button.grid(row=3, column=2, padx=10, pady=10)
+clear_button.grid(row=4, column=1, padx=10, pady=10)
 
 
 copy_button = ttk.Button(root, text="Copy History", command=copy_to_clipboard)
@@ -516,11 +516,11 @@ copy_button.grid(row=4, column=2, padx=10, pady=10)
 
 # Temperature slider
 temperature_label = ttk.Label(root, text="Innovation Factor:", background="#333333", foreground="white")
-temperature_label.grid(row=3, column=3, padx=10, pady=10)
+temperature_label.grid(row=3, column=2, padx=10, pady=10)
 
 temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
 temperature_scale.set(last_temperature)  # Set the last used temperature
-temperature_scale.grid(row=3, column=4, padx=10, pady=10)
+temperature_scale.grid(row=3, column=3, padx=10, pady=10)
 
 # Checkbox for toggling prompt
 do_mention_var = tk.BooleanVar(value=do_mention_page)  # Set the checkbox state
@@ -531,7 +531,18 @@ do_mention_checkbox = ttk.Checkbutton(
     onvalue=True,
     offvalue=False
 )
-do_mention_checkbox.grid(row=4, column=4, padx=10, pady=10, sticky="w")
+do_mention_checkbox.grid(row=4, column=3, padx=10, pady=10, sticky="w")
+
+# Checkbox for toggling prompt
+do_read_image_var = tk.BooleanVar(value=do_read_image)  # Set the checkbox state
+do_read_image_checkbox = ttk.Checkbutton(
+    root,
+    text="Read Images",
+    variable=do_read_image_var,
+    onvalue=True,
+    offvalue=False
+)
+do_read_image_checkbox.grid(row=5, column=3, padx=10, pady=10, sticky="w")
 
 # Bind the UP key to recall the previous user message
 user_input_box.bind("<Up>", revise_last)

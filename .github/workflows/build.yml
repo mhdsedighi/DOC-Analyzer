@@ -28,6 +28,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Uninstall incompatible pathlib package
+        run: |
+          python -m pip uninstall -y pathlib
+
       - name: Build EXE
         run: |
           pyinstaller --onefile --windowed --clean --name DocAnalyzer --add-data "modules;modules" DOC_Analyzer.py  # Add modules folder

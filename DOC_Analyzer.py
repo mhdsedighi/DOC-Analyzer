@@ -159,7 +159,7 @@ def read_documents(folder_path):
                     text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_read_image_var.get())
 
                     # Update the cache with new images
-                    cache[file_path]["images"] = image_content
+                    cache[file_path]["image_content"] = image_content
                     save_document_cache(cache)
                     new_files_read += 1  # Increment new file count if reprocessed
 

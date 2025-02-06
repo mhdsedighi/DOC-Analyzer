@@ -8,6 +8,7 @@ import pdfplumber
 from PIL import Image
 from io import BytesIO
 import base64
+import pytesseract
 
 
 # Function to extract text from a document based on its file type
@@ -275,6 +276,7 @@ def extract_content_from_pdf(pdf_path,do_read_image):
     unreadable_pages = 0
     total_pages = 0
     word_count = 0
+    has_text = False
 
     try:
         # Open the PDF file
@@ -288,11 +290,12 @@ def extract_content_from_pdf(pdf_path,do_read_image):
                 if page_text:
                     text_content.append({"page": page_num + 1, "content": page_text})
                     word_count += len(page_text.split())
+                    has_text = True
                 else:
                     unreadable_pages += 1
 
-                if do_read_image:
-                    # Extract raster images from the page
+                if do_read_image or not page_text:
+                	# Extract raster images from the page
                     fitz_page = doc.load_page(page_num)
                     image_list = fitz_page.get_images(full=True)
 
@@ -311,6 +314,26 @@ def extract_content_from_pdf(pdf_path,do_read_image):
                         img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
                         image_content.append({"page": page_num + 1, "content": img_base64})
+
+                        # Apply OCR if needed
+                        if not page_text:
+                            ocr_text = pytesseract.image_to_string(image)
+                            if ocr_text.strip():
+                                text_content.append({"page": page_num + 1, "content": ocr_text})
+                                word_count += len(ocr_text.split())
+                                has_text = True
+
+        # If no text was found, force OCR for all pages
+        if not has_text:
+            for page_num in range(total_pages):
+                fitz_page = doc.load_page(page_num)
+                pix = fitz_page.get_pixmap()
+                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                ocr_text = pytesseract.image_to_string(img)
+                if ocr_text.strip():
+                    text_content.append({"page": page_num + 1, "content": ocr_text})
+                    word_count += len(ocr_text.split())
+                    has_text = True
 
         readable_percentage = 100 - (unreadable_pages / total_pages * 100) if total_pages > 0 else 100
         return text_content, image_content, word_count, readable_percentage

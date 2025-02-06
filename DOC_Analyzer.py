@@ -18,9 +18,6 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
 
-# List of models that support image processing
-IMAGE_SUPPORTED_MODELS = ["llava", "bakllava", "cogvlm"]  # Add other image-supported models here
-
 chat_history_list = []  # List to store the conversation history
 
 # Load user data (last folder path, last selected model, and temperature)
@@ -130,14 +127,17 @@ def read_documents(folder_path):
     new_files_read = 0  # Track the number of new files read
     document_images = []  # List to store images from documents
 
-    # Set the introductory line based on the checkbox state
-    if do_mention_var.get():
-        all_text = """Below are the contents of several files of the documents which I want to analyze.
-                    The name of each file is mentioned before the text\n\nWhen responding, always reference the source document and page number like this: [filename, page X].
-                    For example, if the answer comes from 'report.pdf', say: 'The data shows an increase in sales [report.pdf, page 3]'.
-                    If the document has no clear pages, still include the filename."""
+    # Set the introductory line based on the checkbox state. 4 Scenarios
+    if not do_send_images:
+        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). Each text entry includes a file name and page number at the top of the text, structured as:
+                        { "file": "filename.pdf", "page": X, "content": "text data" }.
+                        Provide insights, summaries, or answers based on this textual content."""
     else:
-        all_text = "Below are the contents of several files of the documents which I want to analyze:\n\n"
+        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). Each entry includes a file name and page number at the top, structured as:
+                       { "file": "filename.pdf", "page": X, "content": "text or base64-encoded image or raw vector data (SVG)" }.
+                        Some entries may contain base64-encoded raster images (e.g., PNG, JPEG), while others may contain raw vector data (e.g., SVG) for scalable images. Consider both text and these visual elements when generating insights, summaries, or answers."""
+    if do_mention_var.get():
+        all_text += """When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -165,7 +165,7 @@ def read_documents(folder_path):
 
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_read_image)
+                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_send_images)
 
                 cache[file_path] = {
                     "last_modified": last_modified,
@@ -190,7 +190,7 @@ def read_documents(folder_path):
             chat_history.config(state=tk.DISABLED)
 
             # Add images to document_images list if model supports images
-            if model_var.get() in IMAGE_SUPPORTED_MODELS:
+            if do_send_images:
                 document_images.extend(image_content)
 
     return all_text, new_files_read, document_images
@@ -228,7 +228,7 @@ def chat_with_ai():
             messages = [{"role": "user", "content": full_prompt}]
 
             # If the model supports images, include them in the messages
-            if selected_model in IMAGE_SUPPORTED_MODELS and document_images:
+            if do_send_images:
                 for img_base64 in document_images:
                     messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
 
@@ -418,6 +418,34 @@ def revise_last(event):
     user_input_box.delete("1.0", tk.END)  # Clear current input
     user_input_box.insert(tk.END, previous_message)  # Insert previous message
 
+def is_model_multimodal(model_name):
+    MULTIMODAL_MODELS = {"bakllava", "llava", "cogvlm"}  # list of Multimodal LLMs for quick lookup
+    try:
+        model_name = model_name.lower()  # Normalize input
+        # Check if model name starts with a known multimodal model name
+        if any(model_name.startswith(model) for model in MULTIMODAL_MODELS):
+            return True
+        # Fallback: Query Ollama for metadata (if available)
+        model_info = ollama.show(model_name)
+        return model_info.get("details", {}).get("multimodal", False)
+    except Exception as e:
+        print(f"Error checking model capabilities: {e}")
+        return False
+
+# function to update the model description
+def update_model_description():
+    global do_send_images
+    selected_model = model_var.get()
+    multimodal = is_model_multimodal(selected_model)
+    do_send_images = multimodal and do_read_image_var.get()
+
+    if do_send_images:
+        model_description_label.config(text="Multimodal model with image processing enabled", foreground="green")
+    elif multimodal:
+        model_description_label.config(text="Multimodal model detected (you can enable image reading)", foreground="orange")
+    else:
+        model_description_label.config(text="Standard text-based model", foreground="gray")
+
 def on_toggle(var_name, *args):
     """Update global variables dynamically based on checkbox state."""
     globals()[var_name] = globals()[f"{var_name}_var"].get()
@@ -429,6 +457,7 @@ def on_toggle(var_name, *args):
 spell_checker = enchant.Dict("en_US")
 previous_message=""
 do_revise=False
+do_send_images = False  # Initialize the boolean variable
 
 # Create the main window
 root = tk.Tk()
@@ -456,7 +485,8 @@ do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
 model_var = tk.StringVar(root)
 model_var.set(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
 model_dropdown = ttk.Combobox(root, textvariable=model_var, values=installed_models, state="readonly")
-model_dropdown.grid(row=0, column=3, padx=10, pady=10, sticky="e")
+model_dropdown.grid(row=0, column=3, padx=10, pady=(0, 10), sticky="n")
+model_dropdown.bind("<<ComboboxSelected>>", lambda event: update_model_description())
 
 # Folder path entry
 folder_path_entry = ttk.Entry(root, width=50)
@@ -563,6 +593,17 @@ globals()["do_read_image_var"] = do_read_image_var
 # Attach trace function
 do_mention_var.trace_add("write", lambda *args: on_toggle("do_mention_page", *args))
 do_read_image_var.trace_add("write", lambda *args: on_toggle("do_read_image", *args))
+
+
+model_description_label = ttk.Label(root, text="Select a model", foreground="gray")
+model_description_label.grid(row=0, column=3, padx=10, pady=(10, 0), sticky="s")
+
+update_model_description()
+
+# trace to update the label when either variable changes
+model_var.trace_add("write", lambda *args: update_model_description())
+# Modify the do_read_image_var trace to include model description updates
+do_read_image_var.trace_add("write", lambda *args: (on_toggle("do_read_image", *args), update_model_description()))
 
 # Bind the UP key to recall the previous user message
 user_input_box.bind("<Up>", revise_last)

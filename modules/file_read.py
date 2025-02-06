@@ -6,6 +6,9 @@ import win32com.client
 import fitz
 import pdfplumber
 from PIL import Image
+from io import BytesIO
+import base64
+
 
 # Function to extract text from a document based on its file type
 def extract_content_from_file(file_path,do_read_image):
@@ -300,6 +303,9 @@ def extract_content_from_pdf(pdf_path,do_read_image):
 
                         # Convert image bytes to base64
                         image = Image.open(BytesIO(image_bytes))
+                        # Convert CMYK images to RGB
+                        if image.mode == "CMYK":
+                            image = image.convert("RGB")
                         buffered = BytesIO()
                         image.save(buffered, format="PNG")
                         img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")

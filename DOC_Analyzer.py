@@ -589,6 +589,7 @@ main_layout.addWidget(typehere_label)
 # User input box
 user_input_box = SpellCheckTextEdit()
 user_input_box.setStyleSheet("background-color: #444444; color: white;")
+user_input_box.setMaximumHeight(100)
 main_layout.addWidget(user_input_box)
 
 
@@ -598,24 +599,35 @@ main_layout.addLayout(bottom_layout)
 
 # Send button
 send_button = QPushButton("Ask AI")
+send_button.setStyleSheet("""
+    QPushButton {
+        border: 2px solid blue;  /* Blue border */
+        border-radius: 5px;  /*  rounded corners */
+        padding: 5px 10px;  /* Padding for better appearance */
+    }
+    QPushButton:hover {
+        background-color: rgba(0, 0, 255, 0.3);  /* Light blue on hover */
+    }
+""")
+
 send_button.clicked.connect(chat_with_ai)
-bottom_layout.addWidget(send_button)
+
 
 # Clear button
 clear_button = QPushButton("Clear")
 clear_button.setStyleSheet("background-color: lightcoral; color: black;")
 clear_button.clicked.connect(clear_chat_history)
-bottom_layout.addWidget(clear_button)
+
 
 copy_button = QPushButton("Copy History")
 copy_button.clicked.connect(copy_to_clipboard)
-bottom_layout.addWidget(copy_button)
+
 
 
 # Temperature slider
 temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
-bottom_layout.addWidget(temperature_label)
+
 
 # Function to update the temperature label and save the value
 def update_temperature_label(value):
@@ -626,7 +638,7 @@ def update_temperature_label(value):
 # Label to display the current temperature value
 temperature_display_label = QLabel(f"{last_temperature:.1f}")
 temperature_display_label.setStyleSheet("color: white;")
-bottom_layout.addWidget(temperature_display_label)
+
 
 # Temperature slider with 0.1 increments
 temperature_scale = QSlider(Qt.Orientation.Horizontal)
@@ -635,7 +647,16 @@ temperature_scale.setMaximum(10)  # Represents 0.0 to 1.0 in 0.1 increments
 temperature_scale.setValue(int(last_temperature * 10))  # Set the last used temperature
 temperature_scale.valueChanged.connect(update_temperature_label)  # Update label and save value
 temperature_scale.setMaximumWidth(100)
+
+# add to layout
+bottom_layout.setSpacing(10)
+bottom_layout.addWidget(clear_button)
+bottom_layout.addWidget(copy_button)
+bottom_layout.addWidget(temperature_label)
 bottom_layout.addWidget(temperature_scale)
+bottom_layout.addWidget(temperature_display_label)
+bottom_layout.addWidget(send_button)
+
 
 # Checkbox for toggling prompt
 do_mention_page_var = QCheckBox("Tell Which Page")  # Keep the variable name consistent
@@ -648,11 +669,10 @@ do_mention_page = do_mention_page_var.isChecked() # Initialize the boolean varia
 do_read_image_var = QCheckBox("Read Images")
 do_read_image_var.setChecked(do_read_image)
 do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"),update_model_description()))
-bottom_layout.addWidget(do_read_image_var)
 do_read_image = do_read_image_var.isChecked() # Initialize the boolean variable
 
+top_layout.addWidget(do_read_image_var)
 
-model_description_label = QLabel("Select a model")
 model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)

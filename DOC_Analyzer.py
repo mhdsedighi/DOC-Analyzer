@@ -4,9 +4,9 @@ import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
-                             QMessageBox, QFileDialog, QSizePolicy,QMenu,QStyledItemDelegate)
+                             QMessageBox, QFileDialog, QSizePolicy, QMenu, QStyledItemDelegate)
 from PyQt6.QtCore import Qt, QSize, QRect
-from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor,QSyntaxHighlighter,QBrush,QColor
+from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor, QSyntaxHighlighter, QBrush, QColor
 from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtGui import QShortcut, QPainter
 import enchant
@@ -28,6 +28,17 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
 
 chat_history_list = []  # List to store the conversation history
+
+# Define color formats for chat history
+user_format = QTextCharFormat()
+user_format.setForeground(QColor("lightblue"))  # User messages in light blue
+
+ai_format = QTextCharFormat()
+ai_format.setForeground(QColor("lightgreen"))  # AI responses in light green
+
+system_format = QTextCharFormat()
+system_format.setForeground(QColor("gray"))  # System messages in gray
+
 
 # Load user data (last folder path, last selected model, and temperature)
 def load_user_data():
@@ -51,8 +62,10 @@ def load_user_data():
         "do_read_image": False  # Default value for the checkbox
     }
 
+
 # Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None ,do_read_image=None):
+def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None,
+                   do_read_image=None):
     user_data = load_user_data()
     if last_folder is not None:
         user_data["last_folder"] = last_folder
@@ -192,8 +205,8 @@ def read_documents(folder_path):
 
             chat_history.append(f"Looked at: {filename}\n")
             chat_history.append(f"Word count: {word_count}\n")
-            chat_history.append(f"Extracted images: {len(image_content)}\n\n")
-            chat_history.append(f"Readable content: {readable_percentage:.2f}%\n\n")
+            chat_history.append(f"Extracted images: {len(image_content)}\n")
+            chat_history.append(f"Readable content: {readable_percentage:.2f}%\n")
 
 
             # Add images to document_images list if model supports images
@@ -262,7 +275,8 @@ class AddressMenu(QWidget):
     def save_addresses(self):
         """Save the current list of addresses to user data, ensuring empty lists are handled."""
         addresses = [self.combo_box.itemText(i) for i in range(self.combo_box.count())]
-        save_user_data(last_folders=addresses, last_folder=self.combo_box.currentText().strip())  # Persist updated addresses
+        save_user_data(last_folders=addresses,
+                       last_folder=self.combo_box.currentText().strip())  # Persist updated addresses
 
     def get_current_address(self):
         """Get the currently selected or typed address."""
@@ -284,23 +298,29 @@ def chat_with_ai():
     user_input = user_input_box.toPlainText().strip()
     global previous_message
     global do_revise
-    previous_message=user_input
+    previous_message = user_input
 
-    if do_revise:  #removing what has been revised from prompt
+    if do_revise:  # Removing what has been revised from prompt
         if chat_history_list:
             chat_history_list.pop()
             chat_history_list.pop()
-        do_revise=False
+        do_revise = False
 
     if user_input:
-        chat_history.append("You: ")  # Tag for user text
-        chat_history.append(f"{user_input}\n")  # Tag for user question
+        # Append user message with user format
+        cursor = chat_history.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+        cursor.insertText("You: ", user_format)  # Insert "You: " with user format
+        cursor.insertText(f"{user_input}\n", user_format)  # Insert user input with user format
+        chat_history.setTextCursor(cursor)  # Update the cursor position
+        chat_history.ensureCursorVisible()  # Scroll to the bottom
 
         # Add the user's message to the chat history list
         chat_history_list.append({"role": "user", "content": user_input})
 
         # Combine the document text with the chat history
-        full_prompt = f"{document_text}\n\n" + "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
+        full_prompt = f"{document_text}\n\n" + "\n".join(
+            [f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
 
         try:
             # Send the prompt to the AI using the selected model
@@ -319,11 +339,20 @@ def chat_with_ai():
             )
 
             ai_response = response['message']['content']
-            chat_history.append("AI: ")  # Tag for "AI:"
-            chat_history.append(f"{ai_response}\n")  # Tag for AI response
+            # Append AI response with AI format
+            cursor = chat_history.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+            cursor.insertText("AI: ", ai_format)  # Insert "AI: " with AI format
+            cursor.insertText(f"{ai_response}\n", ai_format)  # Insert AI response with AI format
+            chat_history.setTextCursor(cursor)  # Update the cursor position
+            chat_history.ensureCursorVisible()  # Scroll to the bottom
 
             # Add a horizontal line after the AI's response
-            chat_history.append("---\n")  # Tag for the separator line
+            cursor = chat_history.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+            cursor.insertText("---\n", system_format)  # Insert separator with system format
+            chat_history.setTextCursor(cursor)  # Update the cursor position
+            chat_history.ensureCursorVisible()  # Scroll to the bottom
 
             # Add the AI's response to the chat history list
             chat_history_list.append({"role": "assistant", "content": ai_response})
@@ -367,21 +396,16 @@ def set_folder_path():
 
     # Read documents from the new folder
     document_text, new_files_read, document_images = read_documents(folder_path)
-    chat_history.append(f"Documents reading finished. {new_files_read} new files were processed.\n")
-    chat_history.append("You can now chat with the A.I.\n")
-    chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # Scroll down
+    cursor = chat_history.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+    cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n", system_format)
+    cursor.insertText("You can now chat with the A.I.\n", system_format)
+    chat_history.setTextCursor(cursor)  # Update the cursor position
+    chat_history.ensureCursorVisible()  # Scroll to the bottom
 
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
 
-    # Read documents from the new folder
-    document_text, new_files_read, document_images = read_documents(folder_path)
-    chat_history.append(f"Documents reading finished. {new_files_read} new files were processed.\n")
-    chat_history.append("You can now chat with the A.I.\n")
-    chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # scrolling down
-
-    # Save the folder path, last used model, and temperature
-    save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
 
 class SpellCheckTextEdit(QTextEdit):
     def __init__(self):
@@ -596,8 +620,6 @@ clear_button.clicked.connect(clear_chat_history)
 copy_button = QPushButton("Copy History")
 copy_button.clicked.connect(copy_to_clipboard)
 
-
-
 # Temperature slider
 temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
@@ -609,10 +631,10 @@ def update_temperature_label(value):
     temperature_display_label.setText(f"{temperature_value:.1f}")
     save_user_data(temperature=temperature_value)  # Save the temperature value to cache
 
+
 # Label to display the current temperature value
 temperature_display_label = QLabel(f"{last_temperature:.1f}")
 temperature_display_label.setStyleSheet("color: white;")
-
 
 # Temperature slider with 0.1 increments
 temperature_scale = QSlider(Qt.Orientation.Horizontal)
@@ -631,19 +653,18 @@ bottom_layout.addWidget(temperature_scale)
 bottom_layout.addWidget(temperature_display_label)
 bottom_layout.addWidget(send_button)
 
-
 # Checkbox for toggling prompt
 do_mention_page_var = QCheckBox("Tell Which Page")  # Keep the variable name consistent
 do_mention_page_var.setChecked(do_mention_page)
-do_mention_page_var.stateChanged.connect(lambda: on_toggle("do_mention_page")) # Pass the string name
+do_mention_page_var.stateChanged.connect(lambda: on_toggle("do_mention_page"))  # Pass the string name
 bottom_layout.addWidget(do_mention_page_var)
-do_mention_page = do_mention_page_var.isChecked() # Initialize the boolean variable
+do_mention_page = do_mention_page_var.isChecked()  # Initialize the boolean variable
 
 # Checkbox for toggling image reading
 do_read_image_var = QCheckBox("Read Images")
 do_read_image_var.setChecked(do_read_image)
-do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"),update_model_description()))
-do_read_image = do_read_image_var.isChecked() # Initialize the boolean variable
+do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"), update_model_description()))
+do_read_image = do_read_image_var.isChecked()  # Initialize the boolean variable
 
 top_layout.addWidget(do_read_image_var)
 
@@ -658,7 +679,6 @@ model_var.currentIndexChanged.connect(update_model_description)
 # Bind the UP key to recall the previous user message
 user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Up"), user_input_box)
 user_input_box.shortcut.activated.connect(revise_last)
-
 
 # Bind the Enter key to trigger the chat_with_ai function
 user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)

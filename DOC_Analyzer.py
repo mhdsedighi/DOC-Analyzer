@@ -361,17 +361,6 @@ def set_folder_path():
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
 
-    # Update the dropdown with the latest folder paths
-    update_folder_dropdown()
-
-
-# Function to update the folder dropdown with the last 10 used paths
-def update_folder_dropdown():
-    user_data = load_user_data()
-    folder_path_dropdown.clear()
-    folder_path_dropdown.addItems(user_data.get("last_folders", []))
-    folder_path_dropdown.setCurrentText(folder_path_entry.text().strip())  # Sync dropdown with entry
-
 
 # Function to handle folder path selection from the dropdown
 def on_folder_select(event):

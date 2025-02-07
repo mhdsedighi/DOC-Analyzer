@@ -331,11 +331,11 @@ def chat_with_ai():
             QMessageBox.critical(window, "Error", f"An error occurred: {e}")
 
         user_input_box.clear()
-        chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # scrolling down
+        chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # Scroll down
 
         # Save the last used model, folder path, temperature, and checkbox state
         save_user_data(
-            folder_path_entry.text().strip(),
+            address_menu.get_current_address().strip(),
             selected_model,
             temperature_scale.value() / 100.0,
             do_mention_page=do_mention_page,
@@ -382,32 +382,6 @@ def set_folder_path():
 
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
-
-
-# Function to handle folder path selection from the dropdown
-def on_folder_select(event):
-    selected_path = folder_path_dropdown.currentText()
-    folder_path_entry.setText(selected_path)
-
-
-def delete_folder_path():
-    selected_path = folder_path_dropdown.currentText()  # Get the currently selected path
-    if selected_path:
-        user_data = load_user_data()  # Load the current user data
-        if selected_path in user_data["last_folders"]:
-            user_data["last_folders"].remove(selected_path)  # Remove the selected path
-            save_user_data(last_folders=user_data["last_folders"])  # Save the updated user data
-
-            # If the last_folders list is now empty, remove the last_folder as well
-            if not user_data["last_folders"]:
-                user_data.pop("last_folder", None)  # Remove last_folder from memory
-                folder_path_entry.clear()  # Clear the folder path entry
-
-            # Save the updated user data
-            with open(USER_DATA_FILE, "w") as file:
-                json.dump(user_data, file, indent=4)
-            # Update the dropdown with the new list of folders
-            update_folder_dropdown()
 
 class SpellCheckTextEdit(QTextEdit):
     def __init__(self):

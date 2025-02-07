@@ -260,9 +260,9 @@ class AddressMenu(QWidget):
             self.save_addresses()  # Update stored addresses
 
     def save_addresses(self):
-        """Save the current list of addresses to user data."""
+        """Save the current list of addresses to user data, ensuring empty lists are handled."""
         addresses = [self.combo_box.itemText(i) for i in range(self.combo_box.count())]
-        save_user_data(last_folders=addresses)  # Persist updated addresses
+        save_user_data(last_folders=addresses, last_folder=self.combo_box.currentText().strip())  # Persist updated addresses
 
     def get_current_address(self):
         """Get the currently selected or typed address."""

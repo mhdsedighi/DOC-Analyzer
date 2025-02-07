@@ -442,7 +442,7 @@ chat_history.setStyleSheet("background-color: #444444; color: white;")
 main_layout.addWidget(chat_history)
 
 # Sample text label
-typehere_label = QLabel("Chat with AI here: (Shift+↵ to send | ^ to revise previous)")
+typehere_label = QLabel("Chat with AI here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
 typehere_label.setStyleSheet("color: green;")
 main_layout.addWidget(typehere_label)
 
@@ -539,11 +539,12 @@ update_model_description()
 model_var.currentIndexChanged.connect(update_model_description)
 
 # Bind the UP key to recall the previous user message
-user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Up"), user_input_box)
+
+user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Ctrl+Up"), user_input_box)
 user_input_box.shortcut.activated.connect(revise_last)
 
 # Bind the Enter key to trigger the chat_with_ai function
-user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)
+user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Ctrl+Return"), user_input_box)
 user_input_box.shortcut.activated.connect(chat_with_ai)
 
 # Set window size and position (optional - adjust as needed)

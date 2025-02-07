@@ -2,17 +2,18 @@ import os
 import json
 import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QHBoxLayout, QLabel, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
-                             QMessageBox, QFileDialog, QSizePolicy, QMenu, QStyledItemDelegate)
-from PyQt6.QtCore import Qt, QSize, QRect
-from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor, QSyntaxHighlighter, QBrush, QColor
-from PyQt6 import QtWidgets, QtGui
-from PyQt6.QtGui import QShortcut, QPainter
+                             QMessageBox, QFileDialog, QMenu)
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor
+from PyQt6 import QtGui
+from PyQt6.QtGui import QShortcut
 import enchant
 import ollama
 from modules.file_read import extract_content_from_file
-import base64
+from modules.utils import load_user_data, save_user_data
+from modules.custom_widgets import AddressMenu
 import re
 import string
 
@@ -38,67 +39,6 @@ ai_format.setForeground(QColor("lightgreen"))  # AI responses in light green
 
 system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray
-
-
-# Load user data (last folder path, last selected model, and temperature)
-def load_user_data():
-    if os.path.exists(USER_DATA_FILE):
-        with open(USER_DATA_FILE, "r") as file:
-            data = json.load(file)
-            # Ensure the "last_folders" and "do_mention_page" keys exist in the loaded data
-            if "last_folders" not in data:
-                data["last_folders"] = []
-            if "do_mention_page" not in data:
-                data["do_mention_page"] = False  # Default value if not present
-            if "do_read_image" not in data:
-                data["do_read_image"] = False  # Default value if not present
-            return data
-    return {
-        "last_folder": "",
-        "last_folders": [],
-        "last_model": "",
-        "temperature": 0.7,
-        "do_mention_page": False,  # Default value for the checkbox
-        "do_read_image": False  # Default value for the checkbox
-    }
-
-
-# Save user data (last folder path, last selected model, temperature, and last 10 folders)
-def save_user_data(last_folder=None, last_model=None, temperature=None, last_folders=None, do_mention_page=None,
-                   do_read_image=None):
-    user_data = load_user_data()
-    if last_folder is not None:
-        user_data["last_folder"] = last_folder
-    if last_model is not None:
-        user_data["last_model"] = last_model
-    if temperature is not None:
-        user_data["temperature"] = temperature
-    if last_folders is not None:
-        user_data["last_folders"] = last_folders
-    if do_mention_page is not None:
-        user_data["do_mention_page"] = do_mention_page
-    if do_read_image is not None:
-        user_data["do_read_image"] = do_read_image
-
-    # Update the last 10 folders list if a new folder is added
-    if last_folder and last_folder not in user_data.get("last_folders", []):
-        if "last_folders" not in user_data:
-            user_data["last_folders"] = []
-        user_data["last_folders"].insert(0, last_folder)
-        user_data["last_folders"] = user_data["last_folders"][:10]  # Keep only the last 10
-
-    with open(USER_DATA_FILE, "w") as file:
-        json.dump(user_data, file, indent=4)
-
-    # Update the last 10 folders list
-    if last_folder:
-        if last_folder in user_data["last_folders"]:
-            user_data["last_folders"].remove(last_folder)  # Remove if already exists
-        user_data["last_folders"].insert(0, last_folder)  # Add to the beginning
-        user_data["last_folders"] = user_data["last_folders"][:10]  # Keep only the last 10
-
-    with open(USER_DATA_FILE, "w") as file:
-        json.dump(user_data, file, indent=4)
 
 # Load the document cache
 def load_document_cache():
@@ -214,84 +154,6 @@ def read_documents(folder_path):
                 document_images.extend(image_content)
 
     return all_text, new_files_read, document_images
-
-# Custom delegate to add a button inside each combo box item
-class RemoveButtonDelegate(QStyledItemDelegate):
-    def __init__(self, parent, remove_callback):
-        super().__init__(parent)
-        self.remove_callback = remove_callback  # Function to remove items
-
-    def paint(self, painter, option, index):
-        """Draw the item text and a small remove button."""
-        super().paint(painter, option, index)
-        painter.save()
-
-        # Define button area (small red cross on the right)
-        button_rect = option.rect.adjusted(option.rect.width() - 20, 2, -2, -2)
-        painter.setPen(Qt.GlobalColor.red)
-        painter.drawText(button_rect, Qt.AlignmentFlag.AlignCenter, "×")
-
-        painter.restore()
-
-    def editorEvent(self, event, model, option, index):
-        """Handle button clicks inside the combo box."""
-        if event.type() == event.Type.MouseButtonPress:
-            button_rect = option.rect.adjusted(option.rect.width() - 20, 2, -2, -2)
-            if button_rect.contains(event.pos()):
-                self.remove_callback(index.row())  # Call the remove function
-                return True
-        return False
-
-# Custom address menu where users can type in or select addresses
-class AddressMenu(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.user_data = load_user_data()  # Load stored addresses
-        self.init_ui()
-
-    def init_ui(self):
-        # Main layout for the AddressMenu
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
-
-        # ComboBox for selecting addresses
-        self.combo_box = QComboBox()
-        self.combo_box.setEditable(True)  # Allow typing in the combo box
-        self.combo_box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # Prevent auto-insert
-        self.combo_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.combo_box.addItems(self.user_data.get("last_folders", []))  # Load initial addresses
-        self.combo_box.setCurrentText(self.user_data.get("last_folder", ""))  # Set current address
-        layout.addWidget(self.combo_box)
-
-        # Assign custom delegate to handle remove buttons
-        self.combo_box.setItemDelegate(RemoveButtonDelegate(self.combo_box, self.remove_item))
-
-    def remove_item(self, index):
-        """Remove an address from the combo box and update user data."""
-        if 0 <= index < self.combo_box.count():
-            self.combo_box.removeItem(index)
-            self.save_addresses()  # Update stored addresses
-
-    def save_addresses(self):
-        """Save the current list of addresses to user data, ensuring empty lists are handled."""
-        addresses = [self.combo_box.itemText(i) for i in range(self.combo_box.count())]
-        save_user_data(last_folders=addresses,
-                       last_folder=self.combo_box.currentText().strip())  # Persist updated addresses
-
-    def get_current_address(self):
-        """Get the currently selected or typed address."""
-        return self.combo_box.currentText().strip()
-
-    def set_current_address(self, address):
-        """Set the current address in the combo box."""
-        self.combo_box.setCurrentText(address)
-
-    def add_address(self, address):
-        """Add a new address to the combo box if it doesn’t already exist."""
-        if address and self.combo_box.findText(address) == -1:  # Avoid duplicates
-            self.combo_box.insertItem(0, address)  # Add to the top
-            self.combo_box.setCurrentIndex(0)  # Set as current
-            self.save_addresses()  # Update user data
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -559,7 +421,7 @@ top_layout.addWidget(model_var)
 model_var.currentIndexChanged.connect(update_model_description)
 
 
-# Adding the AddressMenu
+# Adding the custom AddressMenu
 address_menu = AddressMenu()
 top_layout.addWidget(address_menu)
 

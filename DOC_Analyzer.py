@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
                              QMessageBox, QFileDialog, QSizePolicy)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QTextCharFormat, QColor
+from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
 from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtGui import QShortcut
 import enchant
@@ -142,7 +142,7 @@ def read_documents(folder_path):
         all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). Each entry includes a file name and page number at the top, structured as:
                        { "file": "filename.pdf", "page": X, "content": "text or base64-encoded image or raw vector data (SVG)" }.
                         Some entries may contain base64-encoded raster images (e.g., PNG, JPEG), while others may contain raw vector data (e.g., SVG) for scalable images. Consider both text and these visual elements when generating insights, summaries, or answers."""
-    if do_mention_var.get():
+    if do_mention_page_var.isChecked():
         all_text += """When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
 
     for filename in os.listdir(folder_path):
@@ -260,7 +260,7 @@ def chat_with_ai():
             folder_path_entry.text().strip(),
             selected_model,
             temperature_scale.value() / 100.0,
-            do_mention_page=do_mention_var.isChecked(),
+            do_mention_page=do_mention_page.isChecked(),
             do_read_image=do_read_image_var.isChecked()
         )
 
@@ -333,27 +333,39 @@ def delete_folder_path():
             # Update the dropdown with the new list of folders
             update_folder_dropdown()
 
-
+is_checking_spelling = False
 # Function to check spelling and underline misspelled words
 def check_spelling():
-    user_input_box.setFormat(QTextCharFormat())  # Clear previous formatting
-    text = user_input_box.toPlainText()
-    words = text.split()
-    start_index = 0
+    global is_checking_spelling
 
-    for word in words:
-        end_index = start_index + len(word)
-        if is_english(word):
-            if not spell_checker.check(word):
-                format = QTextCharFormat()
-                format.setUnderlineColor(QColor("lightcoral"))
-                format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
-                user_input_box.textCursor().setPosition(start_index)
-                user_input_box.textCursor().movePosition(QTextCursor.MoveOperation.Right,QTextCursor.MoveMode.KeepAnchor,len(word))
-                user_input_box.textCursor().setCharFormat(format)
+    if is_checking_spelling:
+        return
 
+    is_checking_spelling = True
+    try:
+        user_input_box.selectAll()
+        cursor = user_input_box.textCursor()
+        cursor.setCharFormat(QTextCharFormat())
 
-        start_index = end_index + 1
+        text = user_input_box.toPlainText()
+        words = text.split()
+        start_index = 0
+
+        for word in words:
+            end_index = start_index + len(word)
+            if is_english(word):
+                if not spell_checker.check(word):
+                    format = QTextCharFormat()
+                    format.setUnderlineColor(QColor("lightcoral"))
+                    format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
+
+                    cursor.setPosition(start_index)
+                    cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, len(word))
+                    cursor.setCharFormat(format)
+
+            start_index = end_index + 1
+    finally:
+        is_checking_spelling = False
 
 
 # Function to show spelling suggestions on right-click
@@ -436,7 +448,7 @@ def update_model_description():
 
 def on_toggle(var_name):
     """Update global variables dynamically based on checkbox state."""
-    globals()[var_name] = globals()[f"{var_name}_var"].isChecked()
+    globals()[var_name] = globals()[f"{var_name}_var"].isChecked() # Access the QCheckBox variable
     # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
 
 
@@ -562,16 +574,18 @@ temperature_scale.setValue(int(last_temperature * 100))  # Set the last used tem
 bottom_layout.addWidget(temperature_scale)
 
 # Checkbox for toggling prompt
-do_mention_var = QCheckBox("Tell Which Page")
-do_mention_var.setChecked(do_mention_page)
-do_mention_var.stateChanged.connect(lambda: on_toggle("do_mention_page"))
-bottom_layout.addWidget(do_mention_var)
+do_mention_page_var = QCheckBox("Tell Which Page")  # Keep the variable name consistent
+do_mention_page_var.setChecked(do_mention_page)
+do_mention_page_var.stateChanged.connect(lambda: on_toggle("do_mention_page")) # Pass the string name
+bottom_layout.addWidget(do_mention_page_var)
+do_mention_page = do_mention_page_var.isChecked() # Initialize the boolean variable
 
 # Checkbox for toggling image reading
 do_read_image_var = QCheckBox("Read Images")
 do_read_image_var.setChecked(do_read_image)
 do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"),update_model_description()))
 bottom_layout.addWidget(do_read_image_var)
+do_read_image = do_read_image_var.isChecked() # Initialize the boolean variable
 
 
 model_description_label = QLabel("Select a model")

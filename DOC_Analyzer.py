@@ -4,15 +4,17 @@ import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
-                             QMessageBox, QFileDialog, QSizePolicy)
+                             QMessageBox, QFileDialog, QSizePolicy,QMenu)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
+from PyQt6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor,QSyntaxHighlighter,QBrush,QColor
 from PyQt6 import QtWidgets, QtGui
 from PyQt6.QtGui import QShortcut
 import enchant
 import ollama
 from modules.file_read import extract_content_from_file
 import base64
+import re
+import string
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -333,10 +335,57 @@ def delete_folder_path():
             # Update the dropdown with the new list of folders
             update_folder_dropdown()
 
+class SpellCheckTextEdit(QTextEdit):
+    def __init__(self):
+        super().__init__()
+        self.highlighter = SpellCheckHighlighter(self.document())  # Attach highlighter
 
-def is_english(word):
-    english_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    return all(char in english_chars for char in word)
+        # Enable custom context menu
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_spell_menu)
+
+    def show_spell_menu(self, pos):
+        cursor = self.cursorForPosition(pos)
+        cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+        word = cursor.selectedText()
+
+        if not word or self.highlighter.is_valid_word(word):
+            return  # Exit if no word or it's valid
+
+        menu = QMenu(self)
+        suggestions = self.highlighter.spell_checker.suggest(word)
+
+        if suggestions:
+            for suggestion in suggestions[:5]:  # Show up to 5 suggestions
+                action = menu.addAction(suggestion)
+                action.triggered.connect(lambda checked, s=suggestion: self.replace_word(cursor, s))
+
+        menu.exec(self.mapToGlobal(pos))
+
+    def replace_word(self, cursor, new_word):
+        cursor.insertText(new_word)
+
+class SpellCheckHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.spell_checker = enchant.Dict("en_US")  # Use English dictionary
+
+        # Define the red wavy underline format
+        self.error_format = QTextCharFormat()
+        self.error_format.setUnderlineColor(QColor("red"))
+        self.error_format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+
+    def highlightBlock(self, text):
+        words = re.findall(r'\b\w+\b', text)  # Extract words
+        for word in words:
+            if not self.is_valid_word(word):
+                start = text.index(word)
+                self.setFormat(start, len(word), self.error_format)
+
+    def is_valid_word(self, word): # Ensure the word contains only English letters (A-Z, a-z)
+        if not all(char in string.ascii_letters for char in word):
+            return True  # Ignore words with non-English characters (consider them valid)
+        return self.spell_checker.check(word)
 
 
 # Copy to Clipboard button
@@ -473,10 +522,9 @@ typehere_label.setStyleSheet("color: green;")
 main_layout.addWidget(typehere_label)
 
 # User input box
-user_input_box = QTextEdit()
+user_input_box = SpellCheckTextEdit()
 user_input_box.setStyleSheet("background-color: #444444; color: white;")
 main_layout.addWidget(user_input_box)
-user_input_box.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
 
 
 # Create a horizontal layout for the buttons and slider

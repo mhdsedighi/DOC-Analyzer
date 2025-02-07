@@ -617,10 +617,24 @@ temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
 bottom_layout.addWidget(temperature_label)
 
+# Function to update the temperature label and save the value
+def update_temperature_label(value):
+    temperature_value = value / 10.0  # Convert slider value to 0.1 increments
+    temperature_display_label.setText(f"{temperature_value:.1f}")
+    save_user_data(temperature=temperature_value)  # Save the temperature value to cache
+
+# Label to display the current temperature value
+temperature_display_label = QLabel(f"{last_temperature:.1f}")
+temperature_display_label.setStyleSheet("color: white;")
+bottom_layout.addWidget(temperature_display_label)
+
+# Temperature slider with 0.1 increments
 temperature_scale = QSlider(Qt.Orientation.Horizontal)
 temperature_scale.setMinimum(0)
-temperature_scale.setMaximum(100)
-temperature_scale.setValue(int(last_temperature * 100))  # Set the last used temperature
+temperature_scale.setMaximum(10)  # Represents 0.0 to 1.0 in 0.1 increments
+temperature_scale.setValue(int(last_temperature * 10))  # Set the last used temperature
+temperature_scale.valueChanged.connect(update_temperature_label)  # Update label and save value
+temperature_scale.setMaximumWidth(100)
 bottom_layout.addWidget(temperature_scale)
 
 # Checkbox for toggling prompt

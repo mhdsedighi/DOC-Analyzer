@@ -260,8 +260,8 @@ def chat_with_ai():
             folder_path_entry.text().strip(),
             selected_model,
             temperature_scale.value() / 100.0,
-            do_mention_page=do_mention_page.isChecked(),
-            do_read_image=do_read_image_var.isChecked()
+            do_mention_page=do_mention_page,
+            do_read_image=do_read_image
         )
 
 
@@ -333,67 +333,6 @@ def delete_folder_path():
             # Update the dropdown with the new list of folders
             update_folder_dropdown()
 
-is_checking_spelling = False
-# Function to check spelling and underline misspelled words
-def check_spelling():
-    global is_checking_spelling
-
-    if is_checking_spelling:
-        return
-
-    is_checking_spelling = True
-    try:
-        user_input_box.selectAll()
-        cursor = user_input_box.textCursor()
-        cursor.setCharFormat(QTextCharFormat())
-
-        text = user_input_box.toPlainText()
-        words = text.split()
-        start_index = 0
-
-        for word in words:
-            end_index = start_index + len(word)
-            if is_english(word):
-                if not spell_checker.check(word):
-                    format = QTextCharFormat()
-                    format.setUnderlineColor(QColor("lightcoral"))
-                    format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
-
-                    cursor.setPosition(start_index)
-                    cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, len(word))
-                    cursor.setCharFormat(format)
-
-            start_index = end_index + 1
-    finally:
-        is_checking_spelling = False
-
-
-# Function to show spelling suggestions on right-click
-def show_suggestions(event):
-    cursor = user_input_box.cursorForPosition(event.pos())
-    word_start = cursor.position()
-    cursor.selectWord()
-    word = cursor.selectedText()
-    word_end = cursor.position() + len(word)
-
-    if not spell_checker.check(word):
-        suggestions = spell_checker.suggest(word)
-        menu = QtWidgets.QMenu(window)  # Create a QMenu
-        for suggestion in suggestions:
-            action = QtWidgets.QAction(suggestion, menu) # Create a QAction for each suggestion
-            action.triggered.connect(lambda s=suggestion, ws=word_start, we=word_end: replace_word(ws, we, s)) # Connect the triggered signal to the replace_word function
-            menu.addAction(action) # Add the action to the menu
-        menu.popup(event.globalPos()) # Show the menu at the global cursor position
-
-# Function to replace a misspelled word with a suggestion
-def replace_word(start, end, replacement):
-    cursor = user_input_box.textCursor()
-    cursor.setPosition(start)
-    cursor.movePosition(QTextCursor.MoveOperation.Right,QTextCursor.MoveMode.KeepAnchor,end-start)
-    cursor.removeSelectedText()
-    cursor.insertText(replacement)
-    check_spelling()
-
 
 def is_english(word):
     english_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -454,8 +393,8 @@ def on_toggle(var_name):
 
 # -------------------------------------------------
 
-# Initialize spell checker
-spell_checker = enchant.Dict("en_US")
+
+
 previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
@@ -537,9 +476,7 @@ main_layout.addWidget(typehere_label)
 user_input_box = QTextEdit()
 user_input_box.setStyleSheet("background-color: #444444; color: white;")
 main_layout.addWidget(user_input_box)
-user_input_box.textChanged.connect(check_spelling)
 user_input_box.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-user_input_box.customContextMenuRequested.connect(show_suggestions)
 
 
 # Create a horizontal layout for the buttons and slider

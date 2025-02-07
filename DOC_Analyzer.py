@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QMessageBox, QFileDialog, QSizePolicy)
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont, QTextCharFormat, QColor
+from PyQt6 import QtWidgets, QtGui
+from PyQt6.QtGui import QShortcut
 import enchant
 import ollama
 from modules.file_read import extract_content_from_file
@@ -363,14 +365,13 @@ def show_suggestions(event):
     word_end = cursor.position() + len(word)
 
     if not spell_checker.check(word):
-        # Get suggestions for the misspelled word
         suggestions = spell_checker.suggest(word)
-		menu = QtWidgets.QMenu(window)
+        menu = QtWidgets.QMenu(window)  # Create a QMenu
         for suggestion in suggestions:
-            action = QtWidgets.QAction(suggestion, menu)
-            action.triggered.connect(lambda s=suggestion, ws=word_start, we=word_end: replace_word(ws, we, s))
-            menu.addAction(action)
-        menu.popup(event.globalPos())
+            action = QtWidgets.QAction(suggestion, menu) # Create a QAction for each suggestion
+            action.triggered.connect(lambda s=suggestion, ws=word_start, we=word_end: replace_word(ws, we, s)) # Connect the triggered signal to the replace_word function
+            menu.addAction(action) # Add the action to the menu
+        menu.popup(event.globalPos()) # Show the menu at the global cursor position
 
 # Function to replace a misspelled word with a suggestion
 def replace_word(start, end, replacement):
@@ -583,15 +584,15 @@ update_model_description()
 model_var.currentIndexChanged.connect(update_model_description)
 
 # Bind the UP key to recall the previous user message
-user_input_box.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Up"), user_input_box)
+user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Up"), user_input_box)
 user_input_box.shortcut.activated.connect(revise_last)
 
 # Bind the Delete key to the folder_path_dropdown widget
-folder_path_dropdown.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Delete"), folder_path_dropdown)
+folder_path_dropdown.shortcut = QShortcut(QtGui.QKeySequence("Delete"), folder_path_dropdown)
 folder_path_dropdown.shortcut.activated.connect(delete_folder_path)
 
 # Bind the Enter key to trigger the chat_with_ai function
-user_input_box.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)
+user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)
 user_input_box.shortcut.activated.connect(chat_with_ai)
 
 # Set window size and position (optional - adjust as needed)

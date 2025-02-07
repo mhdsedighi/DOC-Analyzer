@@ -1,11 +1,16 @@
 import os
 import json
-import tkinter as tk
-from tkinter import filedialog, scrolledtext, messagebox, ttk
-from tkinter import Menu
-import enchant  # For spell checking
+import sys
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QTextEdit, QComboBox, QSlider, QCheckBox,
+                             QMessageBox, QFileDialog, QSizePolicy)
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont, QTextCharFormat, QColor
+import enchant
 import ollama
 from modules.file_read import extract_content_from_file
+import base64
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -107,22 +112,21 @@ def fetch_installed_models():
         return model_names
 
     except Exception as e:
-        messagebox.showerror("Error", f"Failed to fetch models: {e}")
+        QMessageBox.critical(window, "Error", f"Failed to fetch models: {e}")
         return []
+
 
 # Function to handle folder browsing
 def browse_folder():
-    folder_path = filedialog.askdirectory()
+    folder_path = QFileDialog.getExistingDirectory(window, "Select Folder")
     if folder_path:
-        folder_path_entry.delete(0, tk.END)  # Clear the entry widget
-        folder_path_entry.insert(0, folder_path)  # Insert the new folder path
-        update_folder_dropdown()  # Update the dropdown with the new path
-        save_user_data(last_folder=folder_path)  #save the new folder path
-
+        folder_path_entry.setText(folder_path)
+        update_folder_dropdown()
+        save_user_data(last_folder=folder_path)
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
-    document_text = [] #this appers to fix adding extra texts when changing folder
+    document_text = []  # this appears to fix adding extra texts when changing folder
     cache = load_document_cache()
     new_files_read = 0  # Track the number of new files read
     document_images = []  # List to store images from documents
@@ -155,8 +159,8 @@ def read_documents(folder_path):
                 image_content = cached_data.get("image_content", [])
 
                 # **Re-extract if images were not previously stored and do_read_image is True**
-                if do_read_image_var.get() and not image_content: # and not file_ext=="txt"
-                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_read_image_var.get())
+                if do_read_image and not image_content:  # and not file_ext=="txt"
+                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_read_image)
 
                     # Update the cache with new images
                     cache[file_path]["image_content"] = image_content
@@ -182,12 +186,11 @@ def read_documents(folder_path):
             for text_data in text_content:
                 all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
 
-            chat_history.config(state=tk.NORMAL)
-            chat_history.insert(tk.END, f"Looked at: {filename}\n", "fileread_tag")
-            chat_history.insert(tk.END, f"Word count: {word_count}\n", "fileread_tag")
-            chat_history.insert(tk.END, f"Extracted images: {len(image_content)}\n\n", "fileread_tag")
-            chat_history.insert(tk.END, f"Readable content: {readable_percentage:.2f}%\n\n", "fileread_tag")
-            chat_history.config(state=tk.DISABLED)
+            chat_history.append(f"Looked at: {filename}\n")
+            chat_history.append(f"Word count: {word_count}\n")
+            chat_history.append(f"Extracted images: {len(image_content)}\n\n")
+            chat_history.append(f"Readable content: {readable_percentage:.2f}%\n\n")
+
 
             # Add images to document_images list if model supports images
             if do_send_images:
@@ -198,7 +201,7 @@ def read_documents(folder_path):
 
 # Function to handle the chat with the AI
 def chat_with_ai():
-    user_input = user_input_box.get("1.0", tk.END).strip()
+    user_input = user_input_box.toPlainText().strip()
     global previous_message
     global do_revise
     previous_message=user_input
@@ -210,21 +213,18 @@ def chat_with_ai():
         do_revise=False
 
     if user_input:
-        chat_history.config(state=tk.NORMAL)
-        
-        # Insert the user's question
-        chat_history.insert(tk.END, "You: ", "user_tag")  # Tag for user text
-        chat_history.insert(tk.END, f"{user_input}\n", "user_question")  # Tag for user question
-        
+        chat_history.append("You: ")  # Tag for user text
+        chat_history.append(f"{user_input}\n")  # Tag for user question
+
         # Add the user's message to the chat history list
         chat_history_list.append({"role": "user", "content": user_input})
-        
+
         # Combine the document text with the chat history
         full_prompt = f"{document_text}\n\n" + "\n".join([f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
-        
+
         try:
             # Send the prompt to the AI using the selected model
-            selected_model = model_var.get()
+            selected_model = model_var.currentText()
             messages = [{"role": "user", "content": full_prompt}]
 
             # If the model supports images, include them in the messages
@@ -235,188 +235,170 @@ def chat_with_ai():
             response = ollama.chat(
                 model=selected_model,
                 messages=messages,
-                options={"temperature": temperature_scale.get()}  # Use the slider value
+                options={"temperature": temperature_scale.value() / 100.0}  # Use the slider value
             )
-            
+
             ai_response = response['message']['content']
-            chat_history.insert(tk.END, "AI: ", "ai_tag")  # Tag for "AI:" 
-            chat_history.insert(tk.END, f"{ai_response}\n", "ai_response")  # Tag for AI response
-            
+            chat_history.append("AI: ")  # Tag for "AI:"
+            chat_history.append(f"{ai_response}\n")  # Tag for AI response
+
             # Add a horizontal line after the AI's response
-            chat_history.insert(tk.END, "---\n", "separator")  # Tag for the separator line
-            
+            chat_history.append("---\n")  # Tag for the separator line
+
             # Add the AI's response to the chat history list
             chat_history_list.append({"role": "assistant", "content": ai_response})
         except Exception as e:
-            messagebox.showerror("Error", f"An error occurred: {e}")
-        
-        chat_history.config(state=tk.DISABLED)
-        user_input_box.delete("1.0", tk.END)
+            QMessageBox.critical(window, "Error", f"An error occurred: {e}")
 
-        chat_history.see(tk.END) #scrolling down
-        
+        user_input_box.clear()
+        chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # scrolling down
+
         # Save the last used model, folder path, temperature, and checkbox state
         save_user_data(
-            folder_path_entry.get().strip(),
+            folder_path_entry.text().strip(),
             selected_model,
-            temperature_scale.get(),
-            do_mention_page=do_mention_var.get(),
-            do_read_image=do_read_image_var.get()
+            temperature_scale.value() / 100.0,
+            do_mention_page=do_mention_var.isChecked(),
+            do_read_image=do_read_image_var.isChecked()
         )
+
 
 # Function to clear the chat history box
 def clear_chat_history():
-    chat_history.config(state=tk.NORMAL)
-    chat_history.delete("1.0", tk.END)
-    chat_history.config(state=tk.DISABLED)
+    chat_history.clear()
     chat_history_list.clear()  # Clear the chat history list
+
 
 # Function to set the folder path
 def set_folder_path():
     global document_text
     document_text = ""  # Clear the previous document text
     global document_images
-    document_images= []
+    document_images = []
 
-    folder_path = folder_path_entry.get().strip()
+    folder_path = folder_path_entry.text().strip()
     if not folder_path:
-        messagebox.showwarning("Warning", "Please enter a folder path.")
+        QMessageBox.warning(window, "Warning", "Please enter a folder path.")
         return
-    
+
     if not os.path.isdir(folder_path):
-        messagebox.showerror("Error", "Invalid folder path.")
+        QMessageBox.critical(window, "Error", "Invalid folder path.")
         return
-    
+
     # Read documents from the new folder
-    document_text, new_files_read, document_images =  read_documents(folder_path)
-    chat_history.config(state=tk.NORMAL)
-    chat_history.insert(tk.END, f"Documents reading finished. {new_files_read} new files were processed.\n")
-    chat_history.insert(tk.END, "You can now chat with the A.I.\n")
-    chat_history.config(state=tk.DISABLED)
-    chat_history.see(tk.END) #scrolling down
-    
+    document_text, new_files_read, document_images = read_documents(folder_path)
+    chat_history.append(f"Documents reading finished. {new_files_read} new files were processed.\n")
+    chat_history.append("You can now chat with the A.I.\n")
+    chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # scrolling down
+
     # Save the folder path, last used model, and temperature
-    save_user_data(folder_path, model_var.get(), temperature_scale.get())
+    save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
 
     # Update the dropdown with the latest folder paths
     update_folder_dropdown()
 
+
 # Function to update the folder dropdown with the last 10 used paths
 def update_folder_dropdown():
     user_data = load_user_data()
-    folder_path_dropdown["values"] = user_data.get("last_folders", [])
-    folder_path_dropdown.set(folder_path_entry.get().strip())  # Sync dropdown with entry
+    folder_path_dropdown.clear()
+    folder_path_dropdown.addItems(user_data.get("last_folders", []))
+    folder_path_dropdown.setCurrentText(folder_path_entry.text().strip())  # Sync dropdown with entry
+
 
 # Function to handle folder path selection from the dropdown
 def on_folder_select(event):
-    selected_path = folder_path_dropdown.get()
-    folder_path_entry.delete(0, tk.END)
-    folder_path_entry.insert(0, selected_path)
+    selected_path = folder_path_dropdown.currentText()
+    folder_path_entry.setText(selected_path)
 
-def delete_folder_path(event):
-    selected_path = folder_path_dropdown.get()  # Get the currently selected path
+
+def delete_folder_path():
+    selected_path = folder_path_dropdown.currentText()  # Get the currently selected path
     if selected_path:
         user_data = load_user_data()  # Load the current user data
         if selected_path in user_data["last_folders"]:
             user_data["last_folders"].remove(selected_path)  # Remove the selected path
-            save_user_data(last_folders=user_data["last_folders"]) # Save the updated user data
+            save_user_data(last_folders=user_data["last_folders"])  # Save the updated user data
 
             # If the last_folders list is now empty, remove the last_folder as well
             if not user_data["last_folders"]:
                 user_data.pop("last_folder", None)  # Remove last_folder from memory
-                folder_path_entry.delete(0, tk.END)  # Clear the folder path entry
+                folder_path_entry.clear()  # Clear the folder path entry
 
             # Save the updated user data
             with open(USER_DATA_FILE, "w") as file:
                 json.dump(user_data, file, indent=4)
             # Update the dropdown with the new list of folders
-            folder_path_dropdown["values"] = user_data["last_folders"]
-            # Clear the current selection in the dropdown
-            folder_path_dropdown.set("")
+            update_folder_dropdown()
 
-            # Create a temporary popup
-            popup = tk.Toplevel(root)
-            popup.overrideredirect(True)  # Remove window decorations (no close button)
-            popup.geometry("400x50+{}+{}".format(
-                root.winfo_x() + root.winfo_width() // 2 - 50,  # Center horizontally
-                root.winfo_y() + root.winfo_height() // 2 - 25  # Center vertically
-            ))
-            popup.configure(bg="black")  # Set background color
 
-            # Add a label with the text "Deleted."
-            label = tk.Label(popup, text="Folder Path Deleted!", fg="white", bg="black", font=("Arial", 12 ,"bold"))
-            label.pack(pady=10)
-
-            # Function to fade out the popup
-            def fade_out(popup, alpha=1.0):
-                if alpha <= 0:
-                    popup.destroy()  # Close the popup
-                    return
-                popup.attributes("-alpha", alpha)  # Set transparency
-                root.after(150, fade_out, popup, alpha - 0.1)  # Reduce alpha every 150ms
-
-            # Start fading out after 500ms
-            root.after(500, fade_out, popup)
-  
 # Function to check spelling and underline misspelled words
 def check_spelling():
-    user_input_box.tag_remove("misspelled", "1.0", "end")  # Clear previous misspelled tags
-    text = user_input_box.get("1.0", "end-1c")  # Get the text from the input widget
-    words = text.split()  # Split text into words
-    start_index = "1.0"  # Start checking from the beginning
+    user_input_box.setFormat(QTextCharFormat())  # Clear previous formatting
+    text = user_input_box.toPlainText()
+    words = text.split()
+    start_index = 0
 
     for word in words:
-        # Calculate the end index of the current word
-        end_index = f"{start_index}+{len(word)}c"
+        end_index = start_index + len(word)
         if is_english(word):
             if not spell_checker.check(word):
-                user_input_box.tag_add("misspelled", start_index, end_index)  # Tag misspelled word
-        else:
-            pass
-        
-        # Move the start index to the next word
-        start_index = f"{end_index}+1c"
+                format = QTextCharFormat()
+                format.setUnderlineColor(QColor("lightcoral"))
+                format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
+                user_input_box.textCursor().setPosition(start_index)
+                user_input_box.textCursor().movePosition(QTextCursor.MoveOperation.Right,QTextCursor.MoveMode.KeepAnchor,len(word))
+                user_input_box.textCursor().setCharFormat(format)
+
+
+        start_index = end_index + 1
+
 
 # Function to show spelling suggestions on right-click
 def show_suggestions(event):
-    # Get the word under the cursor
-    word_start = user_input_box.index(f"@{event.x},{event.y} wordstart")
-    word_end = user_input_box.index(f"@{event.x},{event.y} wordend")
-    word = user_input_box.get(word_start, word_end)
+    cursor = user_input_box.cursorForPosition(event.pos())
+    word_start = cursor.position()
+    cursor.selectWord()
+    word = cursor.selectedText()
+    word_end = cursor.position() + len(word)
 
-    # Check if the word is misspelled
     if not spell_checker.check(word):
         # Get suggestions for the misspelled word
         suggestions = spell_checker.suggest(word)
-        
-        # Create a right-click menu
-        menu = Menu(root, tearoff=0)
+		menu = QtWidgets.QMenu(window)
         for suggestion in suggestions:
-            menu.add_command(label=suggestion, command=lambda s=suggestion: replace_word(word_start, word_end, s))
-        
-        # Display the menu at the cursor position
-        menu.post(event.x_root, event.y_root)
+            action = QtWidgets.QAction(suggestion, menu)
+            action.triggered.connect(lambda s=suggestion, ws=word_start, we=word_end: replace_word(ws, we, s))
+            menu.addAction(action)
+        menu.popup(event.globalPos())
 
 # Function to replace a misspelled word with a suggestion
 def replace_word(start, end, replacement):
-    user_input_box.delete(start, end)  # Delete the misspelled word
-    user_input_box.insert(start, replacement)  # Insert the suggested word
-    check_spelling()  # Recheck spelling after replacement
+    cursor = user_input_box.textCursor()
+    cursor.setPosition(start)
+    cursor.movePosition(QTextCursor.MoveOperation.Right,QTextCursor.MoveMode.KeepAnchor,end-start)
+    cursor.removeSelectedText()
+    cursor.insertText(replacement)
+    check_spelling()
+
 
 def is_english(word):
     english_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
     return all(char in english_chars for char in word)
 
+
 # Copy to Clipboard button
 def copy_to_clipboard():
-    root.clipboard_clear()  # Clear the clipboard
-    root.clipboard_append(chat_history.get("1.0", tk.END))  # Copy chat history content to clipboard
+    clipboard = QApplication.clipboard()
+    clipboard.setText(chat_history.toPlainText())
 
-def revise_last(event):
+
+def revise_last():
     global do_revise
-    do_revise=True
-    user_input_box.delete("1.0", tk.END)  # Clear current input
-    user_input_box.insert(tk.END, previous_message)  # Insert previous message
+    do_revise = True
+    user_input_box.clear()
+    user_input_box.insertPlainText(previous_message)
+
 
 def is_model_multimodal(model_name):
     MULTIMODAL_MODELS = {"bakllava", "llava", "cogvlm"}  # list of Multimodal LLMs for quick lookup
@@ -432,43 +414,58 @@ def is_model_multimodal(model_name):
         print(f"Error checking model capabilities: {e}")
         return False
 
+
 # function to update the model description
 def update_model_description():
     global do_send_images
-    selected_model = model_var.get()
+    selected_model = model_var.currentText()
     multimodal = is_model_multimodal(selected_model)
-    do_send_images = multimodal and do_read_image_var.get()
+    do_send_images = multimodal and do_read_image_var.isChecked()
 
     if do_send_images:
-        model_description_label.config(text="Multimodal model with image processing enabled", foreground="green")
+        model_description_label.setText("Multimodal model with image processing enabled")
+        model_description_label.setStyleSheet("color: green;")
     elif multimodal:
-        model_description_label.config(text="Multimodal model detected (you can enable image reading)", foreground="orange")
+        model_description_label.setText("Multimodal model detected (you can enable image reading)")
+        model_description_label.setStyleSheet("color: orange;")
     else:
-        model_description_label.config(text="Standard text-based model", foreground="gray")
+        model_description_label.setText("Standard text-based model")
+        model_description_label.setStyleSheet("color: gray;")
 
-def on_toggle(var_name, *args):
+
+def on_toggle(var_name):
     """Update global variables dynamically based on checkbox state."""
-    globals()[var_name] = globals()[f"{var_name}_var"].get()
+    globals()[var_name] = globals()[f"{var_name}_var"].isChecked()
     # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
+
 
 # -------------------------------------------------
 
 # Initialize spell checker
 spell_checker = enchant.Dict("en_US")
-previous_message=""
-do_revise=False
+previous_message = ""
+do_revise = False
 do_send_images = False  # Initialize the boolean variable
 
 # Create the main window
-root = tk.Tk()
-root.title("AI Document Analyzer")
+app = QApplication(sys.argv)
+window = QMainWindow()
+window.setWindowTitle("AI Document Analyzer")
 
 # Set the background color of the main window to gray
-root.configure(bg="#333333")
+window.setStyleSheet("background-color: #333333;")
 
-# Configure grid weights to make the chat history box resizable
-root.grid_rowconfigure(1, weight=1)  # Make row 1 (chat history) resizable
-root.grid_columnconfigure(0, weight=1)  # Make column 0 resizable
+# Create a central widget
+central_widget = QWidget()
+window.setCentralWidget(central_widget)
+
+# Create a main layout (vertical)
+main_layout = QVBoxLayout()
+central_widget.setLayout(main_layout)
+
+# Create a horizontal layout for the top section
+top_layout = QHBoxLayout()
+main_layout.addLayout(top_layout)
 
 # Fetch installed Ollama models
 installed_models = fetch_installed_models()
@@ -482,136 +479,123 @@ do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox st
 do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
 
 # Dropdown for model selection
-model_var = tk.StringVar(root)
-model_var.set(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
-model_dropdown = ttk.Combobox(root, textvariable=model_var, values=installed_models, state="readonly")
-model_dropdown.grid(row=0, column=3, padx=10, pady=(0, 10), sticky="n")
-model_dropdown.bind("<<ComboboxSelected>>", lambda event: update_model_description())
+model_var = QComboBox()
+model_var.addItems(installed_models)
+model_var.setCurrentText(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
+top_layout.addWidget(model_var)
+model_var.currentIndexChanged.connect(update_model_description)
+
+
 
 # Folder path entry
-folder_path_entry = ttk.Entry(root, width=50)
-folder_path_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-
-# Set the last used folder path
-folder_path_entry.insert(0, last_folder)
+folder_path_entry = QLineEdit()
+folder_path_entry.setText(last_folder)
+top_layout.addWidget(folder_path_entry)
 
 # Folder path dropdown
-folder_path_dropdown = ttk.Combobox(root, values=user_data.get("last_folders", []), state="normal")
-folder_path_dropdown.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
-folder_path_dropdown.bind("<<ComboboxSelected>>", on_folder_select)  # Bind selection event
-
-# Set the dropdown value to the last_folder
-folder_path_dropdown.set(last_folder)
+folder_path_dropdown = QComboBox()
+folder_path_dropdown.addItems(user_data.get("last_folders", []))
+folder_path_dropdown.setCurrentText(last_folder)
+top_layout.addWidget(folder_path_dropdown)
+folder_path_dropdown.currentIndexChanged.connect(on_folder_select)
 
 # Browse button
-browse_button = ttk.Button(root, text="Browse", command=browse_folder)  # Use the browse_folder function
-browse_button.grid(row=0, column=1, padx=10, pady=10)
+browse_button = QPushButton("Browse")
+browse_button.clicked.connect(browse_folder)
+top_layout.addWidget(browse_button)
 
 # Read button
-read_button = ttk.Button(root, text="Read Documents", command=set_folder_path)
-read_button.grid(row=0, column=2, padx=10, pady=10)
+read_button = QPushButton("Read Documents")
+read_button.clicked.connect(set_folder_path)
+top_layout.addWidget(read_button)
 
 # Chat history display
-chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
-chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
-
-# Chat history display
-chat_history = scrolledtext.ScrolledText(root, width=80, height=20, state=tk.DISABLED, bg="#444444", fg="white", insertbackground="white")
-chat_history.grid(row=1, column=0, columnspan=4, padx=10, pady=10, sticky="nsew")
+chat_history = QTextEdit()
+chat_history.setReadOnly(True)
+chat_history.setStyleSheet("background-color: #444444; color: white;")
+main_layout.addWidget(chat_history)
 
 # Sample text label
-typehere_label = ttk.Label(root, text="Chat with AI here: (Shift+↵ to send | ^ to revise previous)", foreground="green",font=("Arial", 8))
-typehere_label.grid(row=2, column=0, columnspan=4, padx=10, pady=(10, 0), sticky="w")  # Place between chat_history and user_input_box
-
-# Configure tags for highlighting text
-chat_history.tag_configure("fileread_tag", foreground="yellow")  # Color for file read report
-chat_history.tag_configure("user_tag", foreground="cyan")  # Color for "You: "
-chat_history.tag_configure("user_question", foreground="lightblue", font=("Arial", 10, "bold"))
-chat_history.tag_configure("ai_tag", foreground="red")  # Color for "AI:"
-chat_history.tag_configure("ai_response", foreground="white")  # Color for AI response text
-chat_history.tag_configure("separator", foreground="gray")  # Color for the separator line
+typehere_label = QLabel("Chat with AI here: (Shift+↵ to send | ^ to revise previous)")
+typehere_label.setStyleSheet("color: green;")
+main_layout.addWidget(typehere_label)
 
 # User input box
-user_input_box = tk.Text(root, width=70, height=5, bg="#444444", fg="white", insertbackground="white", wrap=tk.WORD)
-user_input_box.grid(row=3, column=0, padx=10, pady=10, sticky="ew")
+user_input_box = QTextEdit()
+user_input_box.setStyleSheet("background-color: #444444; color: white;")
+main_layout.addWidget(user_input_box)
+user_input_box.textChanged.connect(check_spelling)
+user_input_box.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+user_input_box.customContextMenuRequested.connect(show_suggestions)
 
-# Configure the "misspelled" tag for underlining misspelled words
-user_input_box.tag_configure("misspelled", underline=True, underlinefg="lightcoral")
 
-# Bind the spell check function to the text widget
-user_input_box.bind("<KeyRelease>", lambda event: check_spelling())
-
-# Bind the right-click event to show spelling suggestions
-user_input_box.bind("<Button-3>", show_suggestions)
+# Create a horizontal layout for the buttons and slider
+bottom_layout = QHBoxLayout()
+main_layout.addLayout(bottom_layout)
 
 # Send button
-send_button = ttk.Button(root, text="Ask AI", command=chat_with_ai)
-send_button.grid(row=3, column=1, padx=10, pady=10)
+send_button = QPushButton("Ask AI")
+send_button.clicked.connect(chat_with_ai)
+bottom_layout.addWidget(send_button)
 
 # Clear button
-clear_button = tk.Button(root, text="Clear", command=clear_chat_history ,bg="lightcoral" ,fg="black")
-clear_button.grid(row=4, column=1, padx=10, pady=10)
+clear_button = QPushButton("Clear")
+clear_button.setStyleSheet("background-color: lightcoral; color: black;")
+clear_button.clicked.connect(clear_chat_history)
+bottom_layout.addWidget(clear_button)
 
+copy_button = QPushButton("Copy History")
+copy_button.clicked.connect(copy_to_clipboard)
+bottom_layout.addWidget(copy_button)
 
-copy_button = ttk.Button(root, text="Copy History", command=copy_to_clipboard)
-copy_button.grid(row=4, column=2, padx=10, pady=10)
 
 # Temperature slider
-temperature_label = ttk.Label(root, text="Innovation Factor:", background="#333333", foreground="white")
-temperature_label.grid(row=3, column=2, padx=10, pady=10)
+temperature_label = QLabel("Innovation Factor:")
+temperature_label.setStyleSheet("color: white;")
+bottom_layout.addWidget(temperature_label)
 
-temperature_scale = tk.Scale(root, from_=0.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, bg="#333333", fg="white", troughcolor="#444444")
-temperature_scale.set(last_temperature)  # Set the last used temperature
-temperature_scale.grid(row=3, column=3, padx=10, pady=10)
-
-# Checkbox for toggling prompt
-do_mention_var = tk.BooleanVar(value=do_mention_page)  # Set the checkbox state
-do_mention_checkbox = ttk.Checkbutton(
-    root,
-    text="Tell Which Page",
-    variable=do_mention_var,
-    onvalue=True,
-    offvalue=False
-)
-do_mention_checkbox.grid(row=4, column=3, padx=10, pady=10, sticky="w")
+temperature_scale = QSlider(Qt.Orientation.Horizontal)
+temperature_scale.setMinimum(0)
+temperature_scale.setMaximum(100)
+temperature_scale.setValue(int(last_temperature * 100))  # Set the last used temperature
+bottom_layout.addWidget(temperature_scale)
 
 # Checkbox for toggling prompt
-do_read_image_var = tk.BooleanVar(value=do_read_image)  # Set the checkbox state
-do_read_image_checkbox = ttk.Checkbutton(
-    root,
-    text="Read Images",
-    variable=do_read_image_var,
-    onvalue=True,
-    offvalue=False
-)
-do_read_image_checkbox.grid(row=5, column=3, padx=10, pady=10, sticky="w")
+do_mention_var = QCheckBox("Tell Which Page")
+do_mention_var.setChecked(do_mention_page)
+do_mention_var.stateChanged.connect(lambda: on_toggle("do_mention_page"))
+bottom_layout.addWidget(do_mention_var)
 
-# Store the BooleanVar references in globals()
-globals()["do_mention_page_var"] = do_mention_var
-globals()["do_read_image_var"] = do_read_image_var
-
-# Attach trace function
-do_mention_var.trace_add("write", lambda *args: on_toggle("do_mention_page", *args))
-do_read_image_var.trace_add("write", lambda *args: on_toggle("do_read_image", *args))
+# Checkbox for toggling image reading
+do_read_image_var = QCheckBox("Read Images")
+do_read_image_var.setChecked(do_read_image)
+do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"),update_model_description()))
+bottom_layout.addWidget(do_read_image_var)
 
 
-model_description_label = ttk.Label(root, text="Select a model", foreground="gray")
-model_description_label.grid(row=0, column=3, padx=10, pady=(10, 0), sticky="s")
+model_description_label = QLabel("Select a model")
+model_description_label = QLabel("Select a model")
+model_description_label.setStyleSheet("color: gray;")
+top_layout.addWidget(model_description_label)
 
 update_model_description()
 
-# trace to update the label when either variable changes
-model_var.trace_add("write", lambda *args: update_model_description())
-# Modify the do_read_image_var trace to include model description updates
-do_read_image_var.trace_add("write", lambda *args: (on_toggle("do_read_image", *args), update_model_description()))
+model_var.currentIndexChanged.connect(update_model_description)
 
 # Bind the UP key to recall the previous user message
-user_input_box.bind("<Up>", revise_last)
+user_input_box.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Up"), user_input_box)
+user_input_box.shortcut.activated.connect(revise_last)
 
 # Bind the Delete key to the folder_path_dropdown widget
-folder_path_dropdown.bind("<Delete>", delete_folder_path)
-# Bind the Enter key to trigger the chat_with_ai function
-user_input_box.bind("<Shift-Return>", lambda event: chat_with_ai())
+folder_path_dropdown.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Delete"), folder_path_dropdown)
+folder_path_dropdown.shortcut.activated.connect(delete_folder_path)
 
-# Run the application
-root.mainloop()
+# Bind the Enter key to trigger the chat_with_ai function
+user_input_box.shortcut = QtWidgets.QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)
+user_input_box.shortcut.activated.connect(chat_with_ai)
+
+# Set window size and position (optional - adjust as needed)
+window.setGeometry(100, 100, 800, 600)  # Example size
+
+window.show()
+sys.exit(app.exec())

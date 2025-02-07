@@ -124,9 +124,9 @@ def fetch_installed_models():
 def browse_folder():
     folder_path = QFileDialog.getExistingDirectory(window, "Select Folder")
     if folder_path:
-        folder_path_entry.setText(folder_path)
-        update_folder_dropdown()
-        save_user_data(last_folder=folder_path)
+        address_menu.set_current_address(folder_path)  # Set the selected folder
+        address_menu.add_address(folder_path)  # Add to the list if not already present
+        save_user_data(last_folder=folder_path)  # Save the last folder
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
@@ -202,6 +202,60 @@ def read_documents(folder_path):
 
     return all_text, new_files_read, document_images
 
+#custon address menue which the user can type in
+class AddressMenu(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.user_data = load_user_data()  # Load initial user data
+        self.init_ui()
+
+    def init_ui(self):
+        # Main layout for the AddressMenu
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+
+        # ComboBox for selecting addresses
+        self.combo_box = QComboBox()
+        self.combo_box.setEditable(True)  # Allow typing in the combo box
+        self.combo_box.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)  # Prevent auto-insert
+        self.combo_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.combo_box.addItems(self.user_data.get("last_folders", []))  # Load initial addresses
+        self.combo_box.setCurrentText(self.user_data.get("last_folder", ""))  # Set current address
+        layout.addWidget(self.combo_box)
+
+        # Tiny red cross button to remove items
+        self.remove_button = QPushButton("×")  # Red cross character
+        self.remove_button.setStyleSheet("color: red; font-weight: bold;")
+        self.remove_button.setFixedSize(20, 20)  # Small size
+        self.remove_button.clicked.connect(self.remove_current_item)
+        layout.addWidget(self.remove_button)
+
+    def remove_current_item(self):
+        """Remove the currently selected item from the combo box and user data."""
+        current_index = self.combo_box.currentIndex()
+        if current_index >= 0:
+            self.combo_box.removeItem(current_index)  # Remove from combo box
+            self.save_addresses()  # Update user data
+
+    def save_addresses(self):
+        """Save the current list of addresses to user data."""
+        addresses = [self.combo_box.itemText(i) for i in range(self.combo_box.count())]
+        save_user_data(last_folders=addresses)  # Save updated addresses
+
+    def get_current_address(self):
+        """Get the currently selected or typed address."""
+        return self.combo_box.currentText().strip()
+
+    def set_current_address(self, address):
+        """Set the current address in the combo box."""
+        self.combo_box.setCurrentText(address)
+
+    def add_address(self, address):
+        """Add a new address to the combo box if it doesn't already exist."""
+        if address and self.combo_box.findText(address) == -1:  # Avoid duplicates
+            self.combo_box.insertItem(0, address)  # Add to the top
+            self.combo_box.setCurrentIndex(0)  # Set as current
+            self.save_addresses()  # Update user data
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -280,7 +334,7 @@ def set_folder_path():
     global document_images
     document_images = []
 
-    folder_path = folder_path_entry.text().strip()
+    folder_path = address_menu.get_current_address()  # Get the current address
     if not folder_path:
         QMessageBox.warning(window, "Warning", "Please enter a folder path.")
         return
@@ -288,6 +342,15 @@ def set_folder_path():
     if not os.path.isdir(folder_path):
         QMessageBox.critical(window, "Error", "Invalid folder path.")
         return
+
+    # Read documents from the new folder
+    document_text, new_files_read, document_images = read_documents(folder_path)
+    chat_history.append(f"Documents reading finished. {new_files_read} new files were processed.\n")
+    chat_history.append("You can now chat with the A.I.\n")
+    chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # Scroll down
+
+    # Save the folder path, last used model, and temperature
+    save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
 
     # Read documents from the new folder
     document_text, new_files_read, document_images = read_documents(folder_path)
@@ -487,18 +550,9 @@ top_layout.addWidget(model_var)
 model_var.currentIndexChanged.connect(update_model_description)
 
 
-
-# Folder path entry
-folder_path_entry = QLineEdit()
-folder_path_entry.setText(last_folder)
-top_layout.addWidget(folder_path_entry)
-
-# Folder path dropdown
-folder_path_dropdown = QComboBox()
-folder_path_dropdown.addItems(user_data.get("last_folders", []))
-folder_path_dropdown.setCurrentText(last_folder)
-top_layout.addWidget(folder_path_dropdown)
-folder_path_dropdown.currentIndexChanged.connect(on_folder_select)
+# Adding the AddressMenu
+address_menu = AddressMenu()
+top_layout.addWidget(address_menu)
 
 # Browse button
 browse_button = QPushButton("Browse")
@@ -586,9 +640,6 @@ model_var.currentIndexChanged.connect(update_model_description)
 user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Up"), user_input_box)
 user_input_box.shortcut.activated.connect(revise_last)
 
-# Bind the Delete key to the folder_path_dropdown widget
-folder_path_dropdown.shortcut = QShortcut(QtGui.QKeySequence("Delete"), folder_path_dropdown)
-folder_path_dropdown.shortcut.activated.connect(delete_folder_path)
 
 # Bind the Enter key to trigger the chat_with_ai function
 user_input_box.shortcut = QShortcut(QtGui.QKeySequence("Shift+Return"), user_input_box)

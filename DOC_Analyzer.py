@@ -344,12 +344,19 @@ def update_waiting_label():
 def update_waiting_label_metrics():
     # Calculate elapsed time
     elapsed_time = time.time() - start_time
-    elapsed_time_str = f"{elapsed_time:.1f}s"
+    hours = int(elapsed_time // 3600)
+    minutes = int((elapsed_time % 3600) // 60)
+    seconds = int(elapsed_time % 60)
+    elapsed_time_str = ""
+    if hours > 0:
+        elapsed_time_str += f"{hours}h "
+    if minutes > 0 or hours > 0:  # Show minutes if hours are present
+        elapsed_time_str += f"{minutes}m "
+    elapsed_time_str += f"{seconds}s"
 
     # Get CPU and GPU utilization
     cpu_usage, gpu_usage = get_system_metrics()
 
-    # Update the label text with metrics
     typehere_label.setText(
         f"Waiting... | Elapsed: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
     )

@@ -203,7 +203,7 @@ def chat_with_ai():
             # Append AI response with AI format
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-            cursor.insertText("AI: ", ai_format)  # Insert "AI: " with AI format
+            cursor.insertText("A.I.: ", ai_format)  # Insert "AI: " with AI format
             cursor.insertText(f"{ai_response}\n", ai_format)  # Insert AI response with AI format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
@@ -448,7 +448,7 @@ chat_history.setStyleSheet("background-color: #444444; color: white;")
 main_layout.addWidget(chat_history)
 
 # Sample text label
-typehere_label = QLabel("Chat with AI here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
+typehere_label = QLabel("Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
 typehere_label.setStyleSheet("color: green;")
 main_layout.addWidget(typehere_label)
 
@@ -465,15 +465,20 @@ bottom_layout = QHBoxLayout()
 main_layout.addLayout(bottom_layout)
 
 # Send button
-send_button = QPushButton("Ask AI")
+send_button = QPushButton("Ask A.I.")
 send_button.setStyleSheet("""
     QPushButton {
-        border: 2px solid blue;  /* Blue border */
-        border-radius: 5px;  /*  rounded corners */
-        padding: 5px 10px;  /* Padding for better appearance */
+        border: 2px solid blue;
+        border-radius: 5px;
+        padding: 5px 10px;
     }
     QPushButton:hover {
-        background-color: rgba(0, 0, 255, 0.3);  /* Light blue on hover */
+        background-color: rgba(0, 0, 255, 0.3);
+    }
+    QPushButton:disabled {  /* More specific */
+        color: darkgray;
+        background-color: lightgray; /* Example disabled background */
+        border-color: gray;       /* Example disabled border */
     }
 """)
 
@@ -582,4 +587,5 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 window.setGeometry(100, 100, 800, 600)  # Example size
 disable_ai_interaction() # for initial app start
 window.show()
+# apply style to all disabled buttons in the window:
 sys.exit(app.exec())

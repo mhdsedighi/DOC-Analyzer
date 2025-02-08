@@ -527,10 +527,10 @@ def update_model_description():
         model_description_label.setText("Multimodal model with image processing enabled")
         model_description_label.setStyleSheet("color: green;")
     elif multimodal:
-        model_description_label.setText("Multimodal model detected (you can enable image reading)")
+        model_description_label.setText("←Multimodal model detected (you can enable image reading)")
         model_description_label.setStyleSheet("color: orange;")
     else:
-        model_description_label.setText("Standard text-based model")
+        model_description_label.setText("←Standard text-based model")
         model_description_label.setStyleSheet("color: gray;")
 
 
@@ -600,7 +600,7 @@ do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
 model_var = QComboBox()
 model_var.addItems(installed_models)
 model_var.setCurrentText(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
-top_layout.addWidget(model_var)
+
 model_var.currentIndexChanged.connect(update_model_description)
 
 
@@ -676,7 +676,6 @@ copy_button.clicked.connect(copy_to_clipboard)
 temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
 
-
 # Function to update the temperature label and save the value
 def update_temperature_label(value):
     temperature_value = value / 10.0  # Convert slider value to 0.1 increments
@@ -742,6 +741,7 @@ do_read_image_var.stateChanged.connect(lambda: (on_toggle("do_read_image"), upda
 do_read_image = do_read_image_var.isChecked()  # Initialize the boolean variable
 
 top_layout.addWidget(do_read_image_var)
+top_layout.addWidget(model_var)
 
 model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")

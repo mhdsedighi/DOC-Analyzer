@@ -141,25 +141,31 @@ def read_documents(folder_path):
                 readable_percentage = cached_data["readable_percentage"]
                 image_content = cached_data.get("image_content", [])
 
-                # **Re-extract if images were not previously stored and do_read_image is True**
-                if do_read_image and not image_content:  # and not file_ext=="txt"
-                    text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_read_image)
+               
+                if do_read_image and image_content == "no image":  # Skip re-extraction if 'no image' is recorded and do_read_image is active
+                    pass
+                else:
+                    # Re-extract if images were not previously stored and do_read_image is True
+                    if do_read_image and not image_content:  # and not file_ext=="txt"
+                        text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_read_image)
 
-                    # Update the cache with new images
-                    cache[file_path]["image_content"] = image_content
-                    save_document_cache(cache)
-                    new_files_read += 1  # Increment new file count if reprocessed
-
+                        # Update the cache with new images or 'no image'
+                        cache[file_path]["image_content"] = image_content if image_content else "no image"
+                        save_document_cache(cache)
+                        new_files_read += 1  # Increment new file count if reprocessed
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path,do_send_images)
+                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_send_images)
+
+                if do_read_image and not image_content: 
+                    image_content = "no image"
 
                 cache[file_path] = {
                     "last_modified": last_modified,
                     "text_content": text_content,
                     "word_count": word_count,
                     "readable_percentage": readable_percentage,
-                    "image_content": image_content,  # Cache images with their page numbers
+                    "image_content": image_content,  # Cache images or 'no image'
                 }
                 save_document_cache(cache)
                 new_files_read += 1  # Increment counter for new files
@@ -173,13 +179,14 @@ def read_documents(folder_path):
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
             cursor.insertText(f"✔ Looked at: {filename}\n", system_format)  # Use system_format
             cursor.insertText(f"Word count: {word_count}\n", system_format)  # Use system_format
-            cursor.insertText(f"Extracted images: {len(image_content)}\n", system_format)  # Use system_format
+            if do_read_image:
+                cursor.insertText(f"Extracted images: {len(image_content) if image_content != 'no image' else 0}\n", system_format)  # Use system_format
             cursor.insertText(f"Readable content: {readable_percentage:.2f}%\n", system_format)  # Use system_format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
 
             # Add images to document_images list if model supports images
-            if do_send_images:
+            if do_send_images and image_content != "no image":
                 document_images.extend(image_content)
     enable_ai_interaction()
     return all_text, new_files_read, document_images

@@ -686,5 +686,6 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 window.setGeometry(100, 100, 800, 600)  # Example size
 disable_ai_interaction() # for initial app start
 window.show()
+window.setWindowTitle("A.I. Document Analyzer")
 # apply style to all disabled buttons in the window:
 sys.exit(app.exec())

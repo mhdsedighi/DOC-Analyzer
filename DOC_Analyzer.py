@@ -74,7 +74,7 @@ def fetch_installed_models():
 
 # Function to handle folder browsing
 def browse_folder():
-    folder_path = QFileDialog.getExistingDirectory(window, "Select Folder")
+    folder_path = QFileDialog.getExistingDirectory(window, "Select folder with any number of PDF, DOCX, TXT ,PPT, ... files")
     if folder_path:
         address_menu.set_current_address(folder_path)  # Set the selected folder
         address_menu.add_address(folder_path)  # Add to the list if not already present

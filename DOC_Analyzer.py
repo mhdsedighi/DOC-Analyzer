@@ -1,20 +1,16 @@
-import os
-import json
-import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
                              QMessageBox, QFileDialog, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor
+from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont
 from PyQt6 import QtGui
 from PyQt6.QtGui import QShortcut
-import enchant
-import ollama
+import ollama, enchant, sys, os, json ,re, string, time, math, psutil, pynvml
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
-import re, string, time, math, psutil, pynvml
+
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -175,7 +171,7 @@ def read_documents(folder_path):
 
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-            cursor.insertText(f"Looked at: {filename}\n", system_format)  # Use system_format
+            cursor.insertText(f"✔ Looked at: {filename}\n", system_format)  # Use system_format
             cursor.insertText(f"Word count: {word_count}\n", system_format)  # Use system_format
             cursor.insertText(f"Extracted images: {len(image_content)}\n", system_format)  # Use system_format
             cursor.insertText(f"Readable content: {readable_percentage:.2f}%\n", system_format)  # Use system_format
@@ -430,8 +426,8 @@ def set_folder_path():
     document_text, new_files_read, document_images = read_documents(folder_path)
     cursor = chat_history.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-    cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n", system_format)
-    cursor.insertText("You can now chat with the A.I.\n", system_format)
+    cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n", other_system_format)
+    cursor.insertText("You can now chat with the A.I. \n", other_system_format)
     chat_history.setTextCursor(cursor)  # Update the cursor position
     chat_history.ensureCursorVisible()  # Scroll to the bottom
 
@@ -559,6 +555,11 @@ INITIAL_TYPEHERE_STYLE = "color: green;"
 waiting_format = QTextCharFormat()
 waiting_format.setForeground(QColor("orange"))  # Orange text color
 waiting_format.setFontItalic(True)  # Italic font
+
+other_system_format = QTextCharFormat()
+other_system_format.setForeground(QColor("#0000FF"))
+other_system_format.setFontWeight(QFont.Weight.Bold)  # Bold text
+other_system_format.setFontItalic(True)  # Italic text
 
 # Create the main window
 app = QApplication(sys.argv)

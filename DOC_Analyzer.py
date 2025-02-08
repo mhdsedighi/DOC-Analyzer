@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
                              QMessageBox, QFileDialog, QMenu)
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor
 from PyQt6 import QtGui
 from PyQt6.QtGui import QShortcut
@@ -38,6 +38,37 @@ ai_format.setForeground(QColor("lightgreen"))  # AI responses in light green
 
 system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray
+
+class OllamaWorkerThread(QThread):
+    response_received = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+    process_killed = pyqtSignal()  # Signal when the process is killed
+
+    def __init__(self, model, messages, options):
+        super().__init__()
+        self.model = model
+        self.messages = messages
+        self.options = options
+        self.is_running = True  # Flag to control the loop
+
+    def run(self):
+        try:
+            response = ollama.chat(
+                model=self.model,
+                messages=self.messages,
+                options=self.options
+            )
+            if self.is_running:
+                ai_response = response['message']['content']
+                self.response_received.emit(ai_response)
+        except Exception as e:
+            if self.is_running:  # Check before emitting the error signal
+                self.error_occurred.emit(str(e))
+
+    def stop(self):
+        self.is_running = False  # Set the flag to exit the loop
+        self.process_killed.emit()  # Emit the signal after attempting to sto
+
 
 # Load the document cache
 def load_document_cache():
@@ -193,36 +224,24 @@ def chat_with_ai():
                 for img_base64 in document_images:
                     messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
 
-            response = ollama.chat(
-                model=selected_model,
-                messages=messages,
-                options={"temperature": temperature_scale.value() / 100.0}  # Use the slider value
-            )
+            # Change the button to "Kill Process"
+            send_button.setText("Kill Process")
+            send_button.setStyleSheet("background-color: red; color: white;")
+            send_button.clicked.disconnect()  # Disconnect the previous connection
+            send_button.clicked.connect(kill_ollama_process)  # Connect to kill function
 
-            ai_response = response['message']['content']
-            # Append AI response with AI format
-            cursor = chat_history.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-            cursor.insertText("A.I.: ", ai_format)  # Insert "AI: " with AI format
-            cursor.insertText(f"{ai_response}\n", ai_format)  # Insert AI response with AI format
-            chat_history.setTextCursor(cursor)  # Update the cursor position
-            chat_history.ensureCursorVisible()  # Scroll to the bottom
-
-            # Add a horizontal line after the AI's response
-            cursor = chat_history.textCursor()
-            cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-            cursor.insertText("---\n", system_format)  # Insert separator with system format
-            chat_history.setTextCursor(cursor)  # Update the cursor position
-            chat_history.ensureCursorVisible()  # Scroll to the bottom
-
-            # Add the AI's response to the chat history list
-            chat_history_list.append({"role": "assistant", "content": ai_response})
+            # Create and start the worker thread
+            global ollama_worker
+            ollama_worker = OllamaWorkerThread(selected_model, messages, {"temperature": temperature_scale.value() / 100.0})
+            ollama_worker.response_received.connect(handle_ai_response)
+            ollama_worker.error_occurred.connect(handle_ai_error)
+            ollama_worker.process_killed.connect(reset_ask_ai_button)
+            ollama_worker.start()
         except Exception as e:
             QMessageBox.critical(window, "Error", f"An error occurred: {e}")
 
         user_input_box.clear()
         chat_history.verticalScrollBar().setValue(chat_history.verticalScrollBar().maximum())  # Scroll down
-
         # Save the last used model, folder path, temperature, and checkbox state
         save_user_data(
             address_menu.get_current_address().strip(),
@@ -231,6 +250,62 @@ def chat_with_ai():
             do_mention_page=do_mention_page,
             do_read_image=do_read_image
         )
+
+# Function to handle AI response
+def handle_ai_response(response):
+    # Append AI response with AI format
+    cursor = chat_history.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+    cursor.insertText("A.I.: ", ai_format)  # Insert "AI: " with AI format
+    cursor.insertText(f"{response}\n", ai_format)  # Insert AI response with AI format
+    chat_history.setTextCursor(cursor)  # Update the cursor position
+    chat_history.ensureCursorVisible()  # Scroll to the bottom
+
+    # Add a horizontal line after the AI's response
+    cursor = chat_history.textCursor()
+    cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+    cursor.insertText("---\n", system_format)  # Insert separator with system format
+    chat_history.setTextCursor(cursor)  # Update the cursor position
+    chat_history.ensureCursorVisible()  # Scroll to the bottom
+
+    # Add the AI's response to the chat history list
+    chat_history_list.append({"role": "assistant", "content": response})
+
+    # Reset the button to "Ask AI"
+    reset_ask_ai_button()
+
+# Function to handle AI errors
+def handle_ai_error(error_message):
+    QMessageBox.critical(window, "Error", f"An error occurred: {error_message}")
+    reset_ask_ai_button()
+
+
+# Function to reset the "Ask AI" button
+def reset_ask_ai_button():
+    send_button.setText("Ask AI")
+    send_button.setStyleSheet("""
+        QPushButton {
+            border: 2px solid blue;
+            border-radius: 5px;
+            padding: 5px 10px;
+        }
+        QPushButton:hover {
+            background-color: rgba(0, 0, 255, 0.3);
+        }
+        QPushButton:disabled {
+            color: darkgray;
+            background-color: lightgray;
+            border-color: gray;
+        }
+    """)
+    send_button.clicked.disconnect()  # Disconnect the kill function
+    send_button.clicked.connect(chat_with_ai)  # Reconnect to the chat function
+
+# Function to kill the Ollama process
+def kill_ollama_process():
+    if hasattr(ollama_worker, "stop"):
+        ollama_worker.stop()
+    reset_ask_ai_button()
 
 
 # Function to clear the chat history box
@@ -382,6 +457,7 @@ def on_toggle(var_name):
 previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
+ollama_worker = None
 
 # Create the main window
 app = QApplication(sys.argv)

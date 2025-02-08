@@ -173,11 +173,14 @@ def read_documents(folder_path):
             for text_data in text_content:
                 all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
 
-            chat_history.append(f"Looked at: {filename}\n")
-            chat_history.append(f"Word count: {word_count}\n")
-            chat_history.append(f"Extracted images: {len(image_content)}\n")
-            chat_history.append(f"Readable content: {readable_percentage:.2f}%\n")
-
+            cursor = chat_history.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
+            cursor.insertText(f"Looked at: {filename}\n", system_format)  # Use system_format
+            cursor.insertText(f"Word count: {word_count}\n", system_format)  # Use system_format
+            cursor.insertText(f"Extracted images: {len(image_content)}\n", system_format)  # Use system_format
+            cursor.insertText(f"Readable content: {readable_percentage:.2f}%\n", system_format)  # Use system_format
+            chat_history.setTextCursor(cursor)  # Update the cursor position
+            chat_history.ensureCursorVisible()  # Scroll to the bottom
 
             # Add images to document_images list if model supports images
             if do_send_images:
@@ -358,7 +361,7 @@ def update_waiting_label_metrics():
     cpu_usage, gpu_usage = get_system_metrics()
 
     typehere_label.setText(
-        f"Waiting... | Elapsed: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
+        f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
     )
 
 def get_system_metrics():

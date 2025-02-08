@@ -215,6 +215,9 @@ def chat_with_ai():
             [f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
 
         try:
+            # Change the typehere_label to "Waiting..." with the waiting style
+            typehere_label.setText("Waiting for A.I. ...")
+            typehere_label.setStyleSheet("color: orange; font-style: italic;")
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
             messages = [{"role": "user", "content": full_prompt}]
@@ -302,6 +305,9 @@ def reset_ask_ai_button():
     send_button.clicked.disconnect()  # Disconnect the kill function
     send_button.clicked.connect(chat_with_ai)  # Reconnect to the chat function
     user_input_box.setEnabled(True)
+    # Revert the typehere_label to its original text and style
+    typehere_label.setText("Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
+    typehere_label.setStyleSheet("color: green;")
 
 # Function to kill the Ollama process
 def kill_ollama_process():
@@ -471,6 +477,10 @@ previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+# Define the style for the "Waiting..." state
+waiting_format = QTextCharFormat()
+waiting_format.setForeground(QColor("orange"))  # Orange text color
+waiting_format.setFontItalic(True)  # Italic font
 
 # Create the main window
 app = QApplication(sys.argv)

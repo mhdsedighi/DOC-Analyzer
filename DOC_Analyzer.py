@@ -14,7 +14,7 @@ import ollama
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
-import re, string, time, math
+import re, string, time, math, psutil, pynvml
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -215,9 +215,12 @@ def chat_with_ai():
             [f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
 
         try:
-            # Change the typehere_label to "Waiting..." with the waiting style
-            typehere_label.setText("Waiting for A.I. ...")
-            typehere_label.setStyleSheet("color: orange; font-style: italic;")
+            # Start tracking elapsed time
+            global start_time
+            start_time = time.time()
+            # Call update_waiting_label to set the initial text and start the timer
+            update_waiting_label()
+
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
             messages = [{"role": "user", "content": full_prompt}]
@@ -257,6 +260,10 @@ def chat_with_ai():
 
 # Function to handle AI response
 def handle_ai_response(response):
+    # Stop the metrics timer
+    if hasattr(update_waiting_label, "timer_started"):
+        metrics_timer.stop()
+        delattr(update_waiting_label, "timer_started")  # Reset the timer flag
     # Append AI response with AI format
     cursor = chat_history.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
@@ -277,11 +284,23 @@ def handle_ai_response(response):
 
     # Reset the button to "Ask AI"
     reset_ask_ai_button()
+    # Revert the typehere_label to its initial text and style
+    typehere_label.setText(INITIAL_TYPEHERE_TEXT)
+    typehere_label.setStyleSheet(INITIAL_TYPEHERE_STYLE)
 
 # Function to handle AI errors
 def handle_ai_error(error_message):
+    # Stop the metrics timer
+    if hasattr(update_waiting_label, "timer_started"):
+        metrics_timer.stop()
+        delattr(update_waiting_label, "timer_started")  # Reset the timer flag
+
     QMessageBox.critical(window, "Error", f"An error occurred: {error_message}")
     reset_ask_ai_button()
+
+    # Revert the typehere_label to its initial text and style
+    typehere_label.setText(INITIAL_TYPEHERE_TEXT)
+    typehere_label.setStyleSheet(INITIAL_TYPEHERE_STYLE)
 
 
 # Function to reset the "Ask AI" button
@@ -309,6 +328,49 @@ def reset_ask_ai_button():
     typehere_label.setText("Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
     typehere_label.setStyleSheet("color: green;")
 
+def update_waiting_label():
+    # Set the initial "Waiting..." text and style
+    typehere_label.setText("Waiting...")
+    typehere_label.setStyleSheet("color: orange; font-style: italic;")
+
+    # Start a QTimer to update the label with system metrics (only if not already started)
+    global metrics_timer
+    if not hasattr(update_waiting_label, "timer_started"):
+        metrics_timer = QTimer()
+        metrics_timer.timeout.connect(update_waiting_label_metrics)  # Use a separate function for metrics updates
+        metrics_timer.start(500)  # Update every 500ms
+        update_waiting_label.timer_started = True  # Mark the timer as started
+
+def update_waiting_label_metrics():
+    # Calculate elapsed time
+    elapsed_time = time.time() - start_time
+    elapsed_time_str = f"{elapsed_time:.1f}s"
+
+    # Get CPU and GPU utilization
+    cpu_usage, gpu_usage = get_system_metrics()
+
+    # Update the label text with metrics
+    typehere_label.setText(
+        f"Waiting... | Elapsed: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
+    )
+
+def get_system_metrics():
+    # Get CPU utilization
+    cpu_usage = psutil.cpu_percent(interval=0.1)  # CPU usage in percentage
+
+    # Get GPU utilization using pynvml
+    gpu_usage = "N/A"
+    try:
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # Use the first GPU
+        gpu_info = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        gpu_usage = gpu_info.gpu  # GPU usage in percentage
+        pynvml.nvmlShutdown()
+    except pynvml.NVMLError:
+        pass  # GPU not available or error occurred
+
+    return cpu_usage, gpu_usage
+
 # Function to kill the Ollama process
 def kill_ollama_process():
     # Show a confirmation dialog
@@ -325,7 +387,10 @@ def kill_ollama_process():
         if hasattr(ollama_worker, "stop"):
             ollama_worker.stop()
         reset_ask_ai_button()
-
+        # Stop the metrics timer
+        if hasattr(update_waiting_label, "timer_started"):
+            metrics_timer.stop()
+            delattr(update_waiting_label, "timer_started")  # Reset the timer flag
 
 # Function to clear the chat history box
 def clear_chat_history():
@@ -477,6 +542,9 @@ previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+# Define the initial text and style for typehere_label
+INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"
+INITIAL_TYPEHERE_STYLE = "color: green;"
 # Define the style for the "Waiting..." state
 waiting_format = QTextCharFormat()
 waiting_format.setForeground(QColor("orange"))  # Orange text color

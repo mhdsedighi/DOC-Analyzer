@@ -225,7 +225,7 @@ def chat_with_ai():
                     messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
 
             # Change the button to "Kill Process"
-            send_button.setText("Kill Process")
+            send_button.setText("Cancel")
             send_button.setStyleSheet("background-color: red; color: white;")
             send_button.clicked.disconnect()  # Disconnect the previous connection
             send_button.clicked.connect(kill_ollama_process)  # Connect to kill function
@@ -303,9 +303,20 @@ def reset_ask_ai_button():
 
 # Function to kill the Ollama process
 def kill_ollama_process():
-    if hasattr(ollama_worker, "stop"):
-        ollama_worker.stop()
-    reset_ask_ai_button()
+    # Show a confirmation dialog
+    confirm = QMessageBox.question(
+        window,  # Parent window
+        "Cancel Process",  # Dialog title
+        "Are you sure you abort the processing of your question?",  # Dialog message
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,  # Buttons
+        QMessageBox.StandardButton.No  # Default button
+    )
+
+    # If the user confirms, kill the process
+    if confirm == QMessageBox.StandardButton.Yes:
+        if hasattr(ollama_worker, "stop"):
+            ollama_worker.stop()
+        reset_ask_ai_button()
 
 
 # Function to clear the chat history box

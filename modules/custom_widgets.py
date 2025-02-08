@@ -1,10 +1,11 @@
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QComboBox, QSizePolicy, QStyledItemDelegate)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from modules.utils import load_user_data, save_user_data
 
 
 # Custom address menu where users can type in or select addresses
 class AddressMenu(QWidget):
+    folder_changed = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self.user_data = load_user_data()  # Load stored addresses
@@ -26,6 +27,7 @@ class AddressMenu(QWidget):
 
         # Assign custom delegate to handle remove buttons
         self.combo_box.setItemDelegate(RemoveButtonDelegate(self.combo_box, self.remove_item))
+        self.combo_box.currentTextChanged.connect(self.handle_folder_change)
 
     def remove_item(self, index):
         """Remove an address from the combo box and update user data."""
@@ -54,6 +56,11 @@ class AddressMenu(QWidget):
             self.combo_box.setCurrentIndex(0)  # Set as current
             self.save_addresses()  # Update user data
 
+    def handle_folder_change(self, address):
+        """Handles folder change events and emits the signal."""
+        self.folder_changed.emit()  # Emit the signal
+        self.save_addresses()  # Save updated addresses
+
 # Custom delegate to add a button inside each combo box item
 class RemoveButtonDelegate(QStyledItemDelegate):
     def __init__(self, parent, remove_callback):
@@ -80,3 +87,4 @@ class RemoveButtonDelegate(QStyledItemDelegate):
                 self.remove_callback(index.row())  # Call the remove function
                 return True
         return False
+

@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QPushButton,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
                              QMessageBox, QFileDialog, QMenu)
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor
 from PyQt6 import QtGui
 from PyQt6.QtGui import QShortcut
@@ -14,8 +14,7 @@ import ollama
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
-import re
-import string
+import re, string, time, math
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -152,7 +151,7 @@ def read_documents(folder_path):
             # Add images to document_images list if model supports images
             if do_send_images:
                 document_images.extend(image_content)
-
+    enable_ai_interaction()
     return all_text, new_files_read, document_images
 
 # Function to handle the chat with the AI
@@ -245,8 +244,9 @@ def set_folder_path():
     global document_text
     document_text = ""  # Clear the previous document text
     global document_images
+    read_button.setText("Reading...")
+    QApplication.processEvents()  # Force the UI update if you don't use QThread
     document_images = []
-
     folder_path = address_menu.get_current_address()  # Get the current address
     if not folder_path:
         QMessageBox.warning(window, "Warning", "Please enter a folder path.")
@@ -256,6 +256,7 @@ def set_folder_path():
         QMessageBox.critical(window, "Error", "Invalid folder path.")
         return
 
+    disable_ai_interaction()
     # Read documents from the new folder
     document_text, new_files_read, document_images = read_documents(folder_path)
     cursor = chat_history.textCursor()
@@ -267,7 +268,7 @@ def set_folder_path():
 
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
-
+    enable_ai_interaction()
 
 class SpellCheckTextEdit(QTextEdit):
     def __init__(self):
@@ -405,6 +406,10 @@ main_layout.addLayout(top_layout)
 # Fetch installed Ollama models
 installed_models = fetch_installed_models()
 
+
+read_button_timer = QTimer()
+read_button_timer.timeout.connect(lambda: animate_button(read_button))
+
 # Load user data (last folder path, last selected model, and temperature)
 user_data = load_user_data()
 last_folder = user_data.get("last_folder", "")
@@ -433,6 +438,7 @@ top_layout.addWidget(browse_button)
 # Read button
 read_button = QPushButton("Read Documents")
 read_button.clicked.connect(set_folder_path)
+#read_button.clicked.connect(lambda: (read_button.setText("Reading..."),set_folder_path()))
 top_layout.addWidget(read_button)
 
 # Chat history display
@@ -450,6 +456,7 @@ main_layout.addWidget(typehere_label)
 user_input_box = SpellCheckTextEdit()
 user_input_box.setStyleSheet("background-color: #444444; color: white;")
 user_input_box.setMaximumHeight(100)
+user_input_box.setPlaceholderText("Please read documents first.")  # Set placeholder text
 main_layout.addWidget(user_input_box)
 
 
@@ -471,7 +478,7 @@ send_button.setStyleSheet("""
 """)
 
 send_button.clicked.connect(chat_with_ai)
-
+send_button.setEnabled(False)  # Disable initially
 
 # Clear button
 clear_button = QPushButton("Clear")
@@ -493,6 +500,29 @@ def update_temperature_label(value):
     temperature_display_label.setText(f"{temperature_value:.1f}")
     save_user_data(temperature=temperature_value)  # Save the temperature value to cache
 
+def disable_ai_interaction():
+    """Disables AI interaction elements (Ask AI button and user input box)."""
+    send_button.setEnabled(False)
+    user_input_box.setEnabled(False)
+    user_input_box.setPlaceholderText("Please read documents first.")
+    """Starts the blinking animation on the Read Documents button."""
+    read_button_timer.start(500)
+
+def enable_ai_interaction():
+    """Enables AI interaction elements."""
+    read_button.setText("Read Documents")
+    send_button.setEnabled(True)
+    user_input_box.setEnabled(True)
+    user_input_box.setPlaceholderText("")  # Remove placeholder text
+    """Stops the blinking animation on the Read Documents button."""
+    read_button_timer.stop()
+    read_button.setStyleSheet("") # Reset style
+    read_button.setText("Read Documents")
+
+def animate_button(button):
+    alpha = int((1 +  math.sin(time.time() * 2)) * 127.5)  # Sinusoidal alpha
+    color = QColor(255, 255, 255, alpha) # White with varying alpha
+    button.setStyleSheet(f"background-color: rgba({color.red()},{color.green()},{color.blue()},{color.alpha()});")
 
 # Label to display the current temperature value
 temperature_display_label = QLabel(f"{last_temperature:.1f}")
@@ -537,6 +567,7 @@ top_layout.addWidget(model_description_label)
 update_model_description()
 
 model_var.currentIndexChanged.connect(update_model_description)
+address_menu.folder_changed.connect(disable_ai_interaction)
 
 # Bind the UP key to recall the previous user message
 
@@ -549,6 +580,6 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 
 # Set window size and position (optional - adjust as needed)
 window.setGeometry(100, 100, 800, 600)  # Example size
-
+disable_ai_interaction() # for initial app start
 window.show()
 sys.exit(app.exec())

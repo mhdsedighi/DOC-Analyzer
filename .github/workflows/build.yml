@@ -38,18 +38,18 @@ jobs:
 
       - name: Create ZIP File
         run: |
-          powershell Compress-Archive -Path dist\DocAnalyzer.exe, ReadMe.txt , Update_App.bat -DestinationPath dist\DocAnalyzer.zip
+          powershell Compress-Archive -Path dist\DocAnalyzer.exe, ReadMe.txt , Update_App.bat -DestinationPath dist\DocAnalyzer_windows.zip
 
       - name: Upload ZIP as Artifact
         uses: actions/upload-artifact@v4
         with:
           name: MyCustomApp-ZIP
-          path: dist/DocAnalyzer.zip
+          path: dist/DocAnalyzer_windows.zip
 
       - name: Create Release and Upload ZIP
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/DocAnalyzer.zip
+          files: dist/DocAnalyzer_windows.zip
           tag_name: latest
           name: Latest Build
           draft: false

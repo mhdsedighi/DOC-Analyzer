@@ -229,6 +229,7 @@ def chat_with_ai():
             send_button.setStyleSheet("background-color: red; color: white;")
             send_button.clicked.disconnect()  # Disconnect the previous connection
             send_button.clicked.connect(kill_ollama_process)  # Connect to kill function
+            user_input_box.setEnabled(False)
 
             # Create and start the worker thread
             global ollama_worker
@@ -300,6 +301,7 @@ def reset_ask_ai_button():
     """)
     send_button.clicked.disconnect()  # Disconnect the kill function
     send_button.clicked.connect(chat_with_ai)  # Reconnect to the chat function
+    user_input_box.setEnabled(True)
 
 # Function to kill the Ollama process
 def kill_ollama_process():

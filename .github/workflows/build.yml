@@ -33,8 +33,8 @@ jobs:
           python -m pip uninstall -y pathlib
 
       - name: Build EXE
-        run: |
-          pyinstaller --onefile --windowed --clean --name DocAnalyzer --add-data "modules;modules" DOC_Analyzer.py  # Add modules folder
+        run: pyinstaller --onefile --windowed --clean --name DocAnalyzer --add-data "modules;modules" --add-data "modules/Sahel.ttf;modules" DOC_Analyzer.py
+
 
       - name: Create ZIP File
         run: |

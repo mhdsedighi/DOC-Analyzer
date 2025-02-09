@@ -3,9 +3,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QTextEdit, QComboBox, QSlider, QCheckBox,
                              QMessageBox, QFileDialog, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont
+from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
 from PyQt6 import QtGui
-from PyQt6.QtGui import QShortcut
 import ollama, enchant, sys, os, json ,re, string, time, math, psutil, pynvml
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
@@ -546,7 +545,6 @@ def on_toggle(var_name):
     globals()[var_name] = globals()[f"{var_name}_var"].isChecked() # Access the QCheckBox variable
     # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
 
-
 # -------------------------------------------------
 
 
@@ -771,6 +769,11 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 # Set window size and position (optional - adjust as needed)
 window.setGeometry(100, 100, 800, 600)  # Example size
 disable_ai_interaction() # for initial app start
+
+custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
+chat_history.setFont(custom_font)
+user_input_box.setFont(custom_font)
+
 window.show()
 window.setWindowTitle("A.I. Document Analyzer")
 # apply style to all disabled buttons in the window:

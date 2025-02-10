@@ -20,6 +20,7 @@ def extract_text_and_images(pdf_path):
     pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
     image_index = 0
+    extracted_boxes = []  # Track bounding boxes of extracted images
 
     for page_num, page in enumerate(doc):
         print(f"Processing page {page_num + 1}...")
@@ -47,11 +48,15 @@ def extract_text_and_images(pdf_path):
                 encoded_image = base64.b64encode(image_bytes).decode("utf-8")
 
                 if len(encoded_image) >= 3000:
+                    # Save the image and track its bounding box
                     images_content.append(encoded_image)
                     image_filename = os.path.join(img_dir, f"{pdf_name}_img_{image_index}.png")
                     with open(image_filename, "wb") as img_file:
                         img_file.write(image_bytes)
                     print(f"Raster image {img_index + 1} saved as {image_filename}.")
+
+                    # Record the bounding box of the raster image
+                    extracted_boxes.append((0, 0, page.rect.width, page.rect.height))  # Full page for raster images
                     page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
                     last_pos = len(page_text)
                     image_index += 1
@@ -110,6 +115,17 @@ def extract_text_and_images(pdf_path):
         print(f"After merging, extracting {len(final_boxes)} vector graphics.")
 
         for draw_index, rect in enumerate(final_boxes):
+            # Check if this vector graphic overlaps with an already extracted image
+            is_duplicate = False
+            for extracted_box in extracted_boxes:
+                if is_overlap(rect, extracted_box):
+                    is_duplicate = True
+                    break
+
+            if is_duplicate:
+                print(f"Vector graphic {draw_index + 1} skipped as it overlaps with an already extracted image.")
+                continue
+
             print(f"Extracting vector graphic {draw_index + 1} at {rect}...")
             pix = page.get_pixmap(clip=rect)
             image_bytes = pix.tobytes("png")
@@ -121,6 +137,9 @@ def extract_text_and_images(pdf_path):
                 with open(image_filename, "wb") as img_file:
                     img_file.write(image_bytes)
                 print(f"Vector image {draw_index + 1} saved as {image_filename}.")
+
+                # Record the bounding box of the vector graphic
+                extracted_boxes.append(rect)
                 page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
                 last_pos = len(page_text)
                 image_index += 1
@@ -131,6 +150,32 @@ def extract_text_and_images(pdf_path):
         text_content += page_text_with_placeholders
 
     return text_content, images_content
+
+def is_overlap(box1, box2, threshold=0.8):
+    """
+    Check if two bounding boxes overlap significantly.
+    box1 and box2 are tuples/lists of (x0, y0, x1, y1).
+    threshold: Minimum overlap ratio to consider as a duplicate.
+    """
+    x0_1, y0_1, x1_1, y1_1 = box1
+    x0_2, y0_2, x1_2, y1_2 = box2
+
+    # Calculate intersection area
+    x0 = max(x0_1, x0_2)
+    y0 = max(y0_1, y0_2)
+    x1 = min(x1_1, x1_2)
+    y1 = min(y1_1, y1_2)
+
+    if x1 <= x0 or y1 <= y0:
+        return False  # No overlap
+
+    intersection_area = (x1 - x0) * (y1 - y0)
+    area1 = (x1_1 - x0_1) * (y1_1 - y0_1)
+    area2 = (x1_2 - x0_2) * (y1_2 - y0_2)
+
+    # Calculate overlap ratio
+    overlap_ratio = intersection_area / min(area1, area2)
+    return overlap_ratio >= threshold
 
 
 def save_to_json(text, images, output_path):

@@ -51,12 +51,23 @@ def extract_text_and_images(pdf_path):
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
 
-        # OpenCV-based vector detection with improved merging
+        # Extract text bounding boxes and create a mask
+        text_bboxes = [bbox[:4] for bbox in page.get_text("blocks")]
+
         print("Rendering page for vector detection...")
         pix = page.get_pixmap()
         img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
         gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 50, 150)
+
+        # Create a mask for text regions
+        text_mask = np.zeros_like(edges)
+        for bbox in text_bboxes:
+            x0, y0, x1, y1 = map(int, bbox)
+            cv2.rectangle(text_mask, (x0, y0), (x1, y1), 255, thickness=cv2.FILLED)
+
+        # Apply the mask to remove text regions from edges
+        edges[text_mask == 255] = 0
 
         # Apply morphological closing to merge close elements
         kernel = np.ones((5, 5), np.uint8)

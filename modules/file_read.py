@@ -285,44 +285,60 @@ def extract_content_from_pdf(pdf_path, do_read_image):
             doc = fitz.open(pdf_path)
 
             for page_num in range(total_pages):
-                page_text = pdf.pages[page_num].extract_text()
+                page_text = ""
+                image_index = 0
 
-                if page_text:
+                # Extract text and image placeholders using PyMuPDF
+                page = doc.load_page(page_num)
+                blocks = page.get_text("dict")["blocks"]
+
+                print(f"\nProcessing Page {page_num + 1}...")
+                print(f"Number of blocks: {len(blocks)}")
+
+                for block in blocks:
+                    if block["type"] == 0:  # Text block
+                        for line in block["lines"]:
+                            for span in line["spans"]:
+                                page_text += span["text"]
+                            page_text += "\n"
+                    elif block["type"] == 1 and do_read_image:  # Image block
+                        print(f"Found image block on page {page_num + 1}")
+                        image_index += 1
+                        page_text += f"[IMAGE_{image_index}]\n"
+
+                        # Extract the image
+                        xref = block["xref"]
+                        print(f"Image XREF: {xref}")
+                        base_image = doc.extract_image(xref)
+                        print(f"Base image keys: {base_image.keys()}")  # Debug: Check keys in base_image
+
+                        if "image" in base_image:
+                            image_bytes = base_image["image"]
+                            print(f"Image size: {len(image_bytes)} bytes")  # Debug: Check image size
+
+                            # Convert image bytes to base64
+                            image = Image.open(BytesIO(image_bytes))
+                            if image.mode == "CMYK":
+                                image = image.convert("RGB")
+                            buffered = BytesIO()
+                            image.save(buffered, format="PNG")
+                            img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+                            image_content.append({"page": page_num + 1, "index": image_index, "content": img_base64})
+                            print(f"Image {image_index} extracted and encoded as base64")
+                        else:
+                            print(f"Warning: 'image' key not found in base_image for XREF {xref}")
+
+                # Append the page text to text_content
+                if page_text.strip():
                     text_content.append({"page": page_num + 1, "content": page_text})
                     word_count += len(page_text.split())
                     has_text = True
                 else:
                     unreadable_pages += 1
 
-                if do_read_image or not page_text:
-                	# Extract raster images from the page
-                    fitz_page = doc.load_page(page_num)
-                    image_list = fitz_page.get_images(full=True)
-
-                    for img_index, img in enumerate(image_list):
-                        xref = img[0]  # XREF of the image
-                        base_image = doc.extract_image(xref)
-                        image_bytes = base_image["image"]
-
-                        # Convert image bytes to base64
-                        image = Image.open(BytesIO(image_bytes))
-                        # Convert CMYK images to RGB
-                        if image.mode == "CMYK":
-                            image = image.convert("RGB")
-                        buffered = BytesIO()
-                        image.save(buffered, format="PNG")
-                        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-                        image_content.append({"page": page_num + 1, "content": img_base64})
-
-                        if not page_text:
-                            ocr_text = pytesseract.image_to_string(image)
-                            if ocr_text.strip():
-                                text_content.append({"page": page_num + 1, "content": ocr_text})
-                                word_count += len(ocr_text.split())
-                                has_text = True
-                                used_ocr = "English"
-
-        if not has_text:         # If no text was found, force OCR for all pages
+        # Handle scanned PDFs (no text found)
+        if not has_text:
+            print("\nNo text found. Applying OCR to all pages...")
             for page_num in range(total_pages):
                 fitz_page = doc.load_page(page_num)
                 pix = fitz_page.get_pixmap()
@@ -334,6 +350,7 @@ def extract_content_from_pdf(pdf_path, do_read_image):
                     has_text = True
                     used_ocr = "English"
 
+        # Calculate readable percentage
         readable_percentage = 100 - (unreadable_pages / total_pages * 100) if total_pages > 0 else 100
         return text_content, image_content, word_count, readable_percentage, used_ocr
 

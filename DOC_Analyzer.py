@@ -121,6 +121,7 @@ def read_documents(folder_path):
     else:
         all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). Each entry includes a file name and page number at the top, structured as:
                        { "file": "filename.pdf", "page": X, "content": "text or base64-encoded image or raw vector data (SVG)" }.
+                       The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.
                         Some entries may contain base64-encoded raster images (e.g., PNG, JPEG), while others may contain raw vector data (e.g., SVG) for scalable images. Consider both text and these visual elements when generating insights, summaries, or answers."""
     if do_mention_page_var.isChecked():
         all_text += """When providing insights, summaries, or answers, reference the file name and page number where the information was found."""

@@ -8,17 +8,21 @@ from io import BytesIO
 def extract_text_and_images(pdf_path):
     text_content = ""
     images_content = []
-    img_folder = "imgextract"
-    os.makedirs(img_folder, exist_ok=True)
+    img_dir = "imgextract"
+    os.makedirs(img_dir, exist_ok=True)
 
     print("Opening PDF file...")
     doc = fitz.open(pdf_path)
     print(f"PDF contains {len(doc)} pages.")
+    pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
 
     image_index = 0
+
     for page_num, page in enumerate(doc):
-        print(f"Extracting text from page {page_num + 1}...")
-        text_content += page.get_text("text") + "\n"
+        print(f"Processing page {page_num + 1}...")
+        page_text = page.get_text("text")
+        page_text_with_placeholders = ""
+        last_pos = 0
 
         # Extract raster images
         images = page.get_images(full=True)
@@ -34,10 +38,12 @@ def extract_text_and_images(pdf_path):
 
                 if len(encoded_image) >= 3000:
                     images_content.append(encoded_image)
-                    img_path = os.path.join(img_folder, f"image_{image_index}.png")
-                    with open(img_path, "wb") as img_file:
+                    image_filename = os.path.join(img_dir, f"{pdf_name}_img_{image_index}.png")
+                    with open(image_filename, "wb") as img_file:
                         img_file.write(image_bytes)
-                    print(f"Raster image {img_index + 1} saved as {img_path}.")
+                    print(f"Raster image {img_index + 1} saved as {image_filename}.")
+                    page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
+                    last_pos = len(page_text)
                     image_index += 1
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
@@ -57,13 +63,18 @@ def extract_text_and_images(pdf_path):
 
             if len(encoded_image) >= 3000: # ignoring simple images (like page border lines)
                 images_content.append(encoded_image)
-                img_path = os.path.join(img_folder, f"image_{image_index}.png")
-                with open(img_path, "wb") as img_file:
+                image_filename = os.path.join(img_dir, f"{pdf_name}_vector_{image_index}.png")
+                with open(image_filename, "wb") as img_file:
                     img_file.write(image_bytes)
-                print(f"Vector graphic {draw_index + 1} saved as {img_path}.")
+                print(f"Vector image {draw_index + 1} saved as {image_filename}.")
+                page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
+                last_pos = len(page_text)
                 image_index += 1
             else:
-                print(f"Vector graphic {draw_index + 1} skipped due to small size.")
+                print(f"Vector image {draw_index + 1} skipped due to small size.")
+
+        page_text_with_placeholders += page_text[last_pos:] + "\n"
+        text_content += page_text_with_placeholders
 
     return text_content, images_content
 
@@ -81,7 +92,7 @@ def save_to_json(text, images, output_path):
 
 
 if __name__ == "__main__":
-    pdf_file = "test2.pdf"
+    pdf_file = "test.pdf"
     json_file = "test.json"
 
     print("Starting extraction process...")

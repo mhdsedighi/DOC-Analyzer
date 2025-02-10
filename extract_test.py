@@ -25,15 +25,17 @@ def extract_text_and_images(pdf_path):
     for page_num, page in enumerate(doc):
         print(f"Processing page {page_num + 1}...")
         page_text = page.get_text("text")
-        page_text_with_placeholders = ""
-        last_pos = 0
+        page_elements = []  # Store text and image elements with their positions
 
-        # Extract text bounding boxes to exclude from vector detection
-        text_boxes = []
+        # Extract text blocks with their positions
         for block in page.get_text("blocks"):
-            x0, y0, x1, y1 = block[:4]  # Get text bounding box
-            text_boxes.append((int(x0), int(y0), int(x1), int(y1)))
-        print(f"Recorded {len(text_boxes)} text regions to exclude.")
+            x0, y0, x1, y1, text, block_no, block_type = block
+            if text.strip():  # Only consider non-empty text blocks
+                page_elements.append({
+                    "type": "text",
+                    "bbox": (x0, y0, x1, y1),
+                    "content": text
+                })
 
         # Extract raster images
         images = page.get_images(full=True)
@@ -56,9 +58,13 @@ def extract_text_and_images(pdf_path):
                     print(f"Raster image {img_index + 1} saved as {image_filename}.")
 
                     # Record the bounding box of the raster image
-                    extracted_boxes.append((0, 0, page.rect.width, page.rect.height))  # Full page for raster images
-                    page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
-                    last_pos = len(page_text)
+                    bbox = (0, 0, page.rect.width, page.rect.height)  # Full page for raster images
+                    extracted_boxes.append(bbox)
+                    page_elements.append({
+                        "type": "image",
+                        "bbox": bbox,
+                        "content": f"[IMAGE_{image_index}]"
+                    })
                     image_index += 1
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
@@ -70,8 +76,8 @@ def extract_text_and_images(pdf_path):
         gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
 
         # Mask text areas in the image
-        for x0, y0, x1, y1 in text_boxes:
-            cv2.rectangle(gray, (x0, y0), (x1, y1), (255, 255, 255), -1)
+        for x0, y0, x1, y1 in [elem["bbox"] for elem in page_elements if elem["type"] == "text"]:
+            cv2.rectangle(gray, (int(x0), int(y0)), (int(x1), int(y1)), (255, 255, 255), -1)
 
         # Apply adaptive thresholding for better edge detection
         edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
@@ -140,14 +146,27 @@ def extract_text_and_images(pdf_path):
 
                 # Record the bounding box of the vector graphic
                 extracted_boxes.append(rect)
-                page_text_with_placeholders += page_text[last_pos:] + f" [IMAGE_{image_index}] "
-                last_pos = len(page_text)
+                page_elements.append({
+                    "type": "image",
+                    "bbox": rect,
+                    "content": f"[IMAGE_{image_index}]"
+                })
                 image_index += 1
             else:
                 print(f"Vector image {draw_index + 1} skipped due to small size.")
 
-        page_text_with_placeholders += page_text[last_pos:] + "\n"
-        text_content += page_text_with_placeholders
+        # Sort elements by their vertical (y) and horizontal (x) positions
+        page_elements.sort(key=lambda elem: (elem["bbox"][1], elem["bbox"][0]))  # Sort by y, then x
+
+        # Build the text with inline placeholders
+        page_text_with_placeholders = ""
+        for elem in page_elements:
+            if elem["type"] == "text":
+                page_text_with_placeholders += elem["content"]
+            elif elem["type"] == "image":
+                page_text_with_placeholders += elem["content"]
+
+        text_content += page_text_with_placeholders + "\n"
 
     return text_content, images_content
 

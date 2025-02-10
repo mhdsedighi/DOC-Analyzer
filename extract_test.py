@@ -4,6 +4,7 @@ import base64
 import os
 import cv2
 import numpy as np
+from sklearn.cluster import DBSCAN
 from io import BytesIO
 
 
@@ -50,30 +51,48 @@ def extract_text_and_images(pdf_path):
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
 
-        # OpenCV-based vector detection
+        # OpenCV-based vector detection with improved merging
         print("Rendering page for vector detection...")
         pix = page.get_pixmap()
         img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
         gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
         edges = cv2.Canny(gray, 50, 150)
 
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Apply morphological closing to merge close elements
+        kernel = np.ones((5, 5), np.uint8)
+        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         print(f"Detected {len(contours)} vector elements using OpenCV.")
 
-        filtered_contours = []
+        bounding_boxes = []
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
             if w * h > 10000:  # Ignore very small vector objects
-                filtered_contours.append((x, y, x + w, y + h))
+                bounding_boxes.append([x, y, x + w, y + h])
 
-        if len(filtered_contours) > 50:  # Limit excessive extractions
-            print(f"Too many vector objects on page {page_num + 1}, limiting to 50 largest.")
-            filtered_contours = sorted(filtered_contours, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), reverse=True)[
-                                :50]
+        # Apply DBSCAN clustering to merge nearby bounding boxes
+        if len(bounding_boxes) > 0:
+            clustering = DBSCAN(eps=20, min_samples=1).fit(bounding_boxes)
+            labels = clustering.labels_
+            merged_boxes = {}
 
-        print(f"After filtering, extracting {len(filtered_contours)} vector graphics.")
+            for i, label in enumerate(labels):
+                if label not in merged_boxes:
+                    merged_boxes[label] = bounding_boxes[i]
+                else:
+                    merged_boxes[label][0] = min(merged_boxes[label][0], bounding_boxes[i][0])
+                    merged_boxes[label][1] = min(merged_boxes[label][1], bounding_boxes[i][1])
+                    merged_boxes[label][2] = max(merged_boxes[label][2], bounding_boxes[i][2])
+                    merged_boxes[label][3] = max(merged_boxes[label][3], bounding_boxes[i][3])
 
-        for draw_index, rect in enumerate(filtered_contours):
+            final_boxes = list(merged_boxes.values())
+        else:
+            final_boxes = []
+
+        print(f"After merging, extracting {len(final_boxes)} vector graphics.")
+
+        for draw_index, rect in enumerate(final_boxes):
             print(f"Extracting vector graphic {draw_index + 1} at {rect}...")
             pix = page.get_pixmap(clip=rect)
             image_bytes = pix.tobytes("png")

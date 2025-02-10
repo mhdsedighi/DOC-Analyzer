@@ -27,6 +27,13 @@ def extract_text_and_images(pdf_path):
         page_text_with_placeholders = ""
         last_pos = 0
 
+        # Extract text bounding boxes to exclude from vector detection
+        text_boxes = []
+        for block in page.get_text("blocks"):
+            x0, y0, x1, y1 = block[:4]  # Get text bounding box
+            text_boxes.append((int(x0), int(y0), int(x1), int(y1)))
+        print(f"Recorded {len(text_boxes)} text regions to exclude.")
+
         # Extract raster images
         images = page.get_images(full=True)
         print(f"Found {len(images)} raster images on page {page_num + 1}.")
@@ -51,23 +58,18 @@ def extract_text_and_images(pdf_path):
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
 
-        # Extract text bounding boxes and create a mask
-        text_bboxes = [bbox[:4] for bbox in page.get_text("blocks")]
-
+        # OpenCV-based vector detection with text exclusion
         print("Rendering page for vector detection...")
         pix = page.get_pixmap()
         img_array = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
         gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 50, 150)
 
-        # Create a mask for text regions
-        text_mask = np.zeros_like(edges)
-        for bbox in text_bboxes:
-            x0, y0, x1, y1 = map(int, bbox)
-            cv2.rectangle(text_mask, (x0, y0), (x1, y1), 255, thickness=cv2.FILLED)
+        # Mask text areas in the image
+        for x0, y0, x1, y1 in text_boxes:
+            cv2.rectangle(gray, (x0, y0), (x1, y1), (255, 255, 255), -1)
 
-        # Apply the mask to remove text regions from edges
-        edges[text_mask == 255] = 0
+        # Apply adaptive thresholding for better edge detection
+        edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
 
         # Apply morphological closing to merge close elements
         kernel = np.ones((5, 5), np.uint8)
@@ -79,8 +81,12 @@ def extract_text_and_images(pdf_path):
         bounding_boxes = []
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
-            if w * h > 10000:  # Ignore very small vector objects
-                bounding_boxes.append([x, y, x + w, y + h])
+
+            # Ignore very thin text-like shapes
+            if w / h > 10 or h / w > 10:
+                continue
+
+            bounding_boxes.append([x, y, x + w, y + h])
 
         # Apply DBSCAN clustering to merge nearby bounding boxes
         if len(bounding_boxes) > 0:

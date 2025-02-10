@@ -48,15 +48,40 @@ def extract_text_and_images(pdf_path):
                 else:
                     print(f"Raster image {img_index + 1} skipped due to small size.")
 
-        # Extract vector images by identifying drawing objects
+        # Extract vector images with filtering and merging
         drawings = page.get_drawings()
         print(f"Found {len(drawings)} vector graphics on page {page_num + 1}.")
 
-        for draw_index, drawing in enumerate(drawings):
-            rect = drawing["rect"]  # Bounding box of the vector graphic
-            print(f"Extracting vector graphic {draw_index + 1} at {rect}...")
+        filtered_drawings = []
+        for drawing in drawings:
+            rect = drawing["rect"]
+            width = rect[2] - rect[0]
+            height = rect[3] - rect[1]
 
-            # Render only the region containing the vector drawing
+            if width * height > 10000:  # Ignore very small vector objects
+                filtered_drawings.append(rect)
+
+        if len(filtered_drawings) > 10:  # Limit number of extractions per page
+            print(f"Too many vector objects on page {page_num + 1}, limiting to 10 largest.")
+            filtered_drawings = sorted(filtered_drawings, key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), reverse=True)[
+                                :10]
+
+        merged_vectors = []
+        for rect in filtered_drawings:
+            merged = False
+            for i, m_rect in enumerate(merged_vectors):
+                if (abs(m_rect[0] - rect[0]) < 10 and abs(m_rect[1] - rect[1]) < 10):
+                    merged_vectors[i] = (
+                    min(m_rect[0], rect[0]), min(m_rect[1], rect[1]), max(m_rect[2], rect[2]), max(m_rect[3], rect[3]))
+                    merged = True
+                    break
+            if not merged:
+                merged_vectors.append(rect)
+
+        print(f"After filtering and merging, extracting {len(merged_vectors)} vector graphics.")
+
+        for draw_index, rect in enumerate(merged_vectors):
+            print(f"Extracting vector graphic {draw_index + 1} at {rect}...")
             pix = page.get_pixmap(clip=rect)
             image_bytes = pix.tobytes("png")
             encoded_image = base64.b64encode(image_bytes).decode("utf-8")

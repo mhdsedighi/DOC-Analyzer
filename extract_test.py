@@ -9,7 +9,8 @@ from io import BytesIO
 import pytesseract
 import langid
 import pycountry
-from multiprocessing import Pool, cpu_count
+import io
+from multiprocessing import Pool, cpu_count, Manager
 
 
 def extract_pdf(pdf_path):
@@ -203,30 +204,30 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         doc = fitz.open(pdf_path)
         print(f"PDF contains {len(doc)} pages.")
 
-        # Extract a sample of text from the first few pages for language detection
+        # Convert the PDF to bytes (shared across processes)
+        with open(pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+
+        # Extract a text sample for language detection
         sample_text = ""
-        sample_pages = min(3, len(doc))  # Use up to 3 pages for sampling
+        sample_pages = min(3, len(doc))
+
         for page_num in range(sample_pages):
             page = doc.load_page(page_num)
-            pix = page.get_pixmap()
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-            if img.ndim == 3 and img.shape[2] == 3:
-                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            else:
-                gray = img  # Already grayscale
-
-            page_text, _ = perform_ocr(gray, "eng")  # Perform OCR in English to get sample text
+            img = np.frombuffer(page.get_pixmap().samples, dtype=np.uint8).reshape(page.get_pixmap().h, page.get_pixmap().w, page.get_pixmap().n)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+            page_text, _ = perform_ocr(gray, "eng")
             sample_text += page_text + " "
 
-        # Detect language from the sample text
         detected_lang = detect_language(sample_text, installed_langs)
-        print(f"Detected language for PDF: {detected_lang}")
+        print(f"Detected language: {detected_lang}")
 
-        # Use multiprocessing to process pages in parallel
-        with Pool(processes=cpu_count()) as pool:
-            results = pool.starmap(process_ocr_page, [(pdf_path, page_num, detected_lang) for page_num in range(len(doc))])
+        # Use multiprocessing with an initializer to pass pdf_bytes
+        with Manager() as manager:
+            shared_pdf_bytes = manager.Value(bytes, pdf_bytes)
+            with Pool(processes=cpu_count(), initializer=init_worker, initargs=(shared_pdf_bytes,)) as pool:
+                results = pool.starmap(process_ocr_page, [(page_num, detected_lang) for page_num in range(len(doc))])
 
-        # Combine results from all pages
         text_content = [result[0] for result in results]
         images_content = [result[1] for result in results]
 
@@ -236,44 +237,41 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         print(f"An error occurred: {e}")
         return None, None
 
+# Global variable for worker processes
+worker_pdf = None
 
-def process_ocr_page(pdf_path, page_num, lang):
-    """
-    Process a single page for OCR-based extraction.
-    """
-    doc = fitz.open(pdf_path)
-    page = doc.load_page(page_num)
+def init_worker(shared_pdf_bytes):
+    """Initializer function to load the PDF once per worker."""
+    global worker_pdf
+    worker_pdf = fitz.open(stream=io.BytesIO(shared_pdf_bytes.get()))
+
+def process_ocr_page(page_num, lang):
+    """Process a single page using the globally stored PDF object."""
+    global worker_pdf
+    page = worker_pdf.load_page(page_num)
     print(f"Processing page {page_num + 1}...")
     pix = page.get_pixmap()
     img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 
-    # Perform OCR in the detected language
     page_text, confidence = perform_ocr(gray, lang)
     return page_text, []
 
-
 def perform_ocr(image, lang):
-    """
-    Perform OCR on the given image using the specified language.
-    Returns the extracted text and confidence score.
-    """
+    """Perform OCR on the given image using Tesseract."""
     custom_config = f'--oem 3 --psm 6 -l {lang}'
     data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
 
-    # Extract text and average confidence score
-    text = " ".join([word for word in data["text"] if word.strip()])
-    confidence = sum(data["conf"]) / len(data["conf"]) if data["conf"] else 0
+    words = [word for word in data["text"] if word.strip()]
+    valid_conf = [c for c in data["conf"] if c != -1]
+
+    text = " ".join(words)
+    confidence = sum(valid_conf) / len(valid_conf) if valid_conf else 0
 
     return text, confidence
 
 def detect_language(text, installed_langs):
-    """
-    Detect the language of the given text using langid, but only consider languages
-    that are installed in Tesseract.
-    Returns a Tesseract-compatible language code.
-    """
-    # Detect language using langid
+    """Detect the language of the text, ensuring it is a valid Tesseract language."""
     lang_code, _ = langid.classify(text)
 
     # Map ISO 639-1 code to ISO 639-3 using pycountry

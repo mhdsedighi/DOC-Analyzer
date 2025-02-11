@@ -6,9 +6,22 @@ import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
 from io import BytesIO
+import pytesseract
 
 
-def extract_text_and_images(pdf_path):
+def extract_pdf(pdf_path):
+    # Determines whether the PDF has selectable text. Calls the appropriate function.
+    doc = fitz.open(pdf_path)
+    has_text = any(len(page.get_text("text").strip()) > 5 or len(page.get_text("words")) > 5 for page in doc)  # Improved detection
+    if has_text:
+        print("Detected formatted text in PDF. Using extract_formatted_pdf...")
+        return extract_formatted_pdf(pdf_path)
+    else:
+        print("No selectable text found. Using OCR-based extraction...")
+        return extract_printed_pdf(pdf_path)
+        
+
+def extract_formatted_pdf(pdf_path):
     text_content = ""
     images_content = []
     img_dir = "imgextract"
@@ -170,6 +183,34 @@ def extract_text_and_images(pdf_path):
 
     return text_content, images_content
 
+
+def extract_printed_pdf(pdf_path):
+
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    text_content = ""
+    images_content = []
+    img_dir = "imgextract"
+    os.makedirs(img_dir, exist_ok=True)
+
+    print("Opening PDF file...")
+    doc = fitz.open(pdf_path)
+    print(f"PDF contains {len(doc)} pages.")
+    pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
+    image_index = 0
+
+    for page_num, page in enumerate(doc):
+        print(f"Processing page {page_num + 1}...")
+        pix = page.get_pixmap()
+        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Apply OCR to extract text
+        page_text = pytesseract.image_to_string(gray)
+        text_content += page_text + "\n"
+
+    return text_content, images_content
+
+
 def is_overlap(box1, box2, threshold=0.8):
     """
     Check if two bounding boxes overlap significantly.
@@ -214,7 +255,7 @@ if __name__ == "__main__":
     json_file = "test.json"
 
     print("Starting extraction process...")
-    text, images = extract_text_and_images(pdf_file)
+    text, images = extract_pdf(pdf_file)
     print(f"Extraction complete. Extracted {len(images)} images (including vector images).")
     save_to_json(text, images, json_file)
     print(f"Process finished successfully. JSON saved at {json_file}")

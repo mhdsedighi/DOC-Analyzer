@@ -210,7 +210,11 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
             page = doc.load_page(page_num)
             pix = page.get_pixmap()
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            if img.ndim == 3 and img.shape[2] == 3:
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = img  # Already grayscale
+
             page_text, _ = perform_ocr(gray, "eng")  # Perform OCR in English to get sample text
             sample_text += page_text + " "
 

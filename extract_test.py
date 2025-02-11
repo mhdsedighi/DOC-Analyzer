@@ -262,7 +262,7 @@ def perform_ocr(image, lang):
     data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
 
     # Extract text and average confidence score
-    text = " ".join(data["text"])
+    text = " ".join([word for word in data["text"] if word.strip()])
     confidence = sum(data["conf"]) / len(data["conf"]) if data["conf"] else 0
 
     return text, confidence
@@ -331,7 +331,7 @@ def save_to_json(text, images, output_path):
 
 
 if __name__ == "__main__":
-    pdf_file = "test.pdf"
+    pdf_file = "test4.pdf"
     json_file = "test.json"
 
     print("Starting extraction process...")

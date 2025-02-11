@@ -7,6 +7,8 @@ import numpy as np
 from sklearn.cluster import DBSCAN
 from io import BytesIO
 import pytesseract
+import langid
+import pycountry
 
 
 def extract_pdf(pdf_path):
@@ -184,31 +186,90 @@ def extract_formatted_pdf(pdf_path):
     return text_content, images_content
 
 
-def extract_printed_pdf(pdf_path):
+def extract_printed_pdf(pdf_path, tesseract_path=None):
+    if tesseract_path:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-    text_content = ""
+    text_content = []
     images_content = []
-    img_dir = "imgextract"
-    os.makedirs(img_dir, exist_ok=True)
 
-    print("Opening PDF file...")
-    doc = fitz.open(pdf_path)
-    print(f"PDF contains {len(doc)} pages.")
-    pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
-    image_index = 0
+    # Get list of installed Tesseract languages
+    installed_langs = pytesseract.get_languages(config='')
+    print(f"Installed Tesseract languages: {installed_langs}")
 
-    for page_num, page in enumerate(doc):
-        print(f"Processing page {page_num + 1}...")
-        pix = page.get_pixmap()
-        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    try:
+        print("Opening PDF file...")
+        doc = fitz.open(pdf_path)
+        print(f"PDF contains {len(doc)} pages.")
 
-        # Apply OCR to extract text
-        page_text = pytesseract.image_to_string(gray)
-        text_content += page_text + "\n"
+        # Extract a sample of text from the first few pages for language detection
+        sample_text = ""
+        sample_pages = min(3, len(doc))  # Use up to 3 pages for sampling
+        for page_num in range(sample_pages):
+            page = doc.load_page(page_num)
+            pix = page.get_pixmap()
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            page_text, _ = perform_ocr(gray, "eng")  # Perform OCR in English to get sample text
+            sample_text += page_text + " "
 
-    return text_content, images_content
+        # Detect language from the sample text
+        detected_lang = detect_language(sample_text, installed_langs)
+        print(f"Detected language for PDF: {detected_lang}")
+
+        # Process all pages using the detected language
+        for page_num, page in enumerate(doc):
+            print(f"Processing page {page_num + 1}...")
+            pix = page.get_pixmap()
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Perform OCR in the detected language
+            page_text, confidence = perform_ocr(gray, detected_lang)
+            text_content.append(page_text)
+
+        return text_content, images_content
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None, None
+
+def perform_ocr(image, lang):
+    """
+    Perform OCR on the given image using the specified language.
+    Returns the extracted text and confidence score.
+    """
+    custom_config = f'--oem 3 --psm 6 -l {lang}'
+    data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
+
+    # Extract text and average confidence score
+    text = " ".join(data["text"])
+    confidence = sum(data["conf"]) / len(data["conf"]) if data["conf"] else 0
+
+    return text, confidence
+
+def detect_language(text, installed_langs):
+    """
+    Detect the language of the given text using langid, but only consider languages
+    that are installed in Tesseract.
+    Returns a Tesseract-compatible language code.
+    """
+    # Detect language using langid
+    lang_code, _ = langid.classify(text)
+
+    # Map ISO 639-1 code to ISO 639-3 using pycountry
+    try:
+        lang = pycountry.languages.get(alpha_2=lang_code)
+        tesseract_lang = lang.alpha_3
+    except AttributeError:
+        tesseract_lang = "eng"  # Fallback to English if mapping fails
+
+    # Ensure the detected language is installed in Tesseract
+    if tesseract_lang in installed_langs:
+        return tesseract_lang
+    else:
+        print(f"Detected language '{tesseract_lang}' is not installed in Tesseract. Falling back to English.")
+        return "eng"
 
 
 def is_overlap(box1, box2, threshold=0.8):

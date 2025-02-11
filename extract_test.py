@@ -190,7 +190,7 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
     if tesseract_path:
         pytesseract.pytesseract.tesseract_cmd = tesseract_path
 
-    text_content = []
+    text_content = []  # Temporary list to hold page texts
     images_content = []
 
     # Get list of installed Tesseract languages
@@ -227,8 +227,11 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
             # Perform OCR in the detected language
             page_text, confidence = perform_ocr(gray, detected_lang)
             text_content.append(page_text)
-
-        return text_content, images_content
+            
+        return text_content, images_content #only for temporary  readbility
+        # Combine all page texts into a single string with newline separators
+        # text_content = "\n".join(text_content)
+        # return text_content, images_content
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -307,7 +310,7 @@ def save_to_json(text, images, output_path):
     }
 
     with open(output_path, "w", encoding="utf-8") as json_file:
-        json.dump(data, json_file, ensure_ascii=False, indent=4)
+        json.dump(data, json_file, ensure_ascii=False, indent=4)  # Pretty-print JSON
     print(f"Data saved to {output_path}")
 
 

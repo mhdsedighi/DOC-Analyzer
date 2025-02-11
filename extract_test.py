@@ -9,6 +9,7 @@ from io import BytesIO
 import pytesseract
 import langid
 import pycountry
+from multiprocessing import Pool, cpu_count
 
 
 def extract_pdf(pdf_path):
@@ -217,25 +218,36 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         detected_lang = detect_language(sample_text, installed_langs)
         print(f"Detected language for PDF: {detected_lang}")
 
-        # Process all pages using the detected language
-        for page_num, page in enumerate(doc):
-            print(f"Processing page {page_num + 1}...")
-            pix = page.get_pixmap()
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Use multiprocessing to process pages in parallel
+        with Pool(processes=cpu_count()) as pool:
+            results = pool.starmap(process_ocr_page, [(pdf_path, page_num, detected_lang) for page_num in range(len(doc))])
 
-            # Perform OCR in the detected language
-            page_text, confidence = perform_ocr(gray, detected_lang)
-            text_content.append(page_text)
-            
-        return text_content, images_content #only for temporary  readbility
-        # Combine all page texts into a single string with newline separators
-        # text_content = "\n".join(text_content)
-        # return text_content, images_content
+        # Combine results from all pages
+        text_content = [result[0] for result in results]
+        images_content = [result[1] for result in results]
+
+        return text_content, images_content
 
     except Exception as e:
         print(f"An error occurred: {e}")
         return None, None
+
+
+def process_ocr_page(pdf_path, page_num, lang):
+    """
+    Process a single page for OCR-based extraction.
+    """
+    doc = fitz.open(pdf_path)
+    page = doc.load_page(page_num)
+    print(f"Processing page {page_num + 1}...")
+    pix = page.get_pixmap()
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Perform OCR in the detected language
+    page_text, confidence = perform_ocr(gray, lang)
+    return page_text, []
+
 
 def perform_ocr(image, lang):
     """

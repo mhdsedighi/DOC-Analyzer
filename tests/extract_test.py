@@ -258,13 +258,21 @@ def process_ocr_page(page_num, lang):
     return page_text, []
 
 def perform_ocr(image, lang):
-    """Perform OCR on the given image using Tesseract."""
-    custom_config = f'--oem 3 --psm 6 -l {lang}'
-    data = pytesseract.image_to_data(image, config=custom_config, output_type=pytesseract.Output.DICT)
+    """Perform OCR on the given image using Tesseract with advanced preprocessing."""
+    # Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    # Apply adaptive thresholding
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # Denoise the image
+    denoised = cv2.fastNlMeansDenoising(binary, h=10)
 
+    # Define custom configuration
+    custom_config = f'--oem 3 --psm 6 -l {lang}'
+
+    # Perform OCR
+    data = pytesseract.image_to_data(denoised, config=custom_config, output_type=pytesseract.Output.DICT)
     words = [word for word in data["text"] if word.strip()]
     valid_conf = [c for c in data["conf"] if c != -1]
-
     text = " ".join(words)
     confidence = sum(valid_conf) / len(valid_conf) if valid_conf else 0
 

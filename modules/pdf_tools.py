@@ -168,7 +168,8 @@ def extract_formatted_pdf(pdf_path,do_read_image):
                     print(f"Vector image {draw_index + 1} skipped due to small size.")
 
         # Sort elements by their vertical (y) and horizontal (x) positions
-        page_elements.sort(key=lambda elem: (elem["bbox"][1], elem["bbox"][0]))  # Sort by y, then x
+        page_elements.sort(key=lambda elem: (elem["bbox"][1] if elem["type"] == "text" else page.rect.height, elem["bbox"][0]))
+
 
         # Build the text with inline placeholders for this page
         page_text_with_placeholders = ""

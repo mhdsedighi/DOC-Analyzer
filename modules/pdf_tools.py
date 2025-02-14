@@ -10,6 +10,7 @@ import pytesseract
 import langid
 import pycountry
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def extract_content_from_pdf(pdf_path,do_read_image):
     # Determines whether the PDF has selectable text. Calls the appropriate function.
@@ -217,18 +218,23 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         detected_lang = detect_language(sample_text, installed_langs)
         print(f"Detected language: {detected_lang}")
 
-        text_content = ""
-        # Loop through pages sequentially
-        for page_num in range(len(doc)):
+        # Define a helper function for OCR on a single page
+        def process_page(page_num):
             page = doc.load_page(page_num)
-            print(f"Processing page {page_num + 1}...")
             pix = page.get_pixmap()
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
             gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
+            return perform_ocr(gray, detected_lang)
 
-            page_text, _ = perform_ocr(gray, detected_lang)  # Use detected language
-            text_content += page_text
+        # Use ThreadPoolExecutor for parallel processing
+        text_content = ""
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(process_page, page_num) for page_num in range(len(doc))]
 
+            # Collect results as they complete
+            for future in as_completed(futures):
+                page_text, _ = future.result()
+                text_content += page_text
 
         word_count = len(text_content.split())
         return text_content, [], word_count, 100, detected_lang

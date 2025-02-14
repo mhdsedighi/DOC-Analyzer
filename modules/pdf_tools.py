@@ -9,7 +9,8 @@ import langid
 import pycountry
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-def extract_content_from_pdf(pdf_path,do_read_image):
+
+def extract_content_from_pdf(pdf_path,do_read_image,tesseract_path=None):
     # Determines whether the PDF has selectable text. Calls the appropriate function.
     doc = fitz.open(pdf_path)
     has_text = any(
@@ -19,7 +20,7 @@ def extract_content_from_pdf(pdf_path,do_read_image):
         return extract_formatted_pdf(pdf_path,do_read_image)
     else:
         print("No selectable text found. Using OCR-based extraction...")
-        return extract_printed_pdf(pdf_path)
+        return extract_printed_pdf(pdf_path,tesseract_path)
 
 
 def extract_formatted_pdf(pdf_path,do_read_image):
@@ -188,13 +189,12 @@ def extract_formatted_pdf(pdf_path,do_read_image):
 
 def extract_printed_pdf(pdf_path, tesseract_path=None):
     if tesseract_path:
-        pytesseract.pytesseract.tesseract_cmd = tesseract_path
-
-    # Get list of installed Tesseract languages
-    installed_langs = pytesseract.get_languages(config='')
-    print(f"Installed Tesseract languages: {installed_langs}")
+        pytesseract.pytesseract.tesseract_cmd = tesseract_path #to do: only if os is windows
 
     try:
+        # Get list of installed Tesseract languages
+        installed_langs = pytesseract.get_languages(config='')
+        print(f"Installed Tesseract languages: {installed_langs}")
         print("Opening PDF file...")
         doc = fitz.open(pdf_path)
         print(f"PDF contains {len(doc)} pages.")

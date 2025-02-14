@@ -9,9 +9,9 @@ from modules.pdf_tools import extract_content_from_pdf
 
 
 # Function to extract text from a document based on its file type
-def extract_content_from_file(file_path,do_read_image):
+def extract_content_from_file(file_path,do_read_image,tesseract_path=None):
     if file_path.endswith(".pdf"):
-        return extract_content_from_pdf(file_path,do_read_image)
+        return extract_content_from_pdf(file_path,do_read_image,tesseract_path)
     elif file_path.endswith(".docx"):
         return extract_content_from_docx(file_path,do_read_image)
     elif file_path.endswith(".doc"):

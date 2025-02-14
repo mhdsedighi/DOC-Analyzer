@@ -21,6 +21,8 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
+tesseract_folder=r"C:\Program Files\Tesseract-OCR"
+tesseract_path=os.path.join(tesseract_folder,"tesseract.exe")
 
 chat_history_list = []  # List to store the conversation history
 
@@ -171,7 +173,7 @@ def read_documents(folder_path):
                 else:
                     # Re-extract if images were not previously stored and do_read_image is True
                     if do_read_image and not image_content:  # and not file_ext=="txt"
-                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image)
+                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
 
                         # Update the cache with new images or 'no image'
                         cache[file_path]["image_content"] = image_content if image_content else "no image"
@@ -180,7 +182,7 @@ def read_documents(folder_path):
                         new_files_read += 1  # Increment new file count if reprocessed
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image)
+                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
 
                 if do_read_image and not image_content:
                     image_content = "no image"
@@ -593,6 +595,7 @@ previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+
 # Define the initial text and style for typehere_label
 INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"
 INITIAL_TYPEHERE_STYLE = "color: green;"
@@ -813,6 +816,8 @@ disable_ai_interaction() # for initial app start
 custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
 chat_history.setFont(custom_font)
 user_input_box.setFont(custom_font)
+
+
 
 window.show()
 window.setWindowTitle("A.I. Document Analyzer")

@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QComboBox, QSlider, QCheckBox, QMessageBox, QFileDialog, QMenu,
-    QDialog, QLineEdit, QSpacerItem, QSizePolicy, QDialogButtonBox  # New imports
+    QDialog, QLineEdit, QSpacerItem, QSizePolicy, QDialogButtonBox
 )
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
@@ -22,8 +22,6 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".doc", ".txt", ".xlsx", ".xls", ".pptx", ".ppt"]
-tesseract_folder=r"C:\Program Files\Tesseract-OCR"
-tesseract_path=os.path.join(tesseract_folder,"tesseract.exe")
 
 chat_history_list = []  # List to store the conversation history
 
@@ -447,10 +445,53 @@ class SettingsDialog(QDialog):
             global tesseract_folder, tesseract_path
             tesseract_folder = folder  # Update the global variable
             tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+            print(f"Selected Tesseract folder: {tesseract_folder}")  # Debugging
+
+    def closeEvent(self, event):
+        # Save the tesseract_folder to the user data cache when the window is closed
+        global tesseract_folder
+        user_data = load_user_data()
+        user_data["tesseract_folder"] = tesseract_folder
+        save_user_data(**user_data)
+        print(f"Saving Tesseract folder to cache: {tesseract_folder}")  # Debugging
+        event.accept()
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+
+    def closeEvent(self, event):
+        global tesseract_folder, tesseract_path  # Declare globals explicitly
+        user_data = load_user_data()
+        user_data["tesseract_folder"] = self.tesseract_path_edit.text()  # Get from the edit box
+        save_user_data(**user_data)
+        tesseract_folder = self.tesseract_path_edit.text() # Update the global variable
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
+        event.accept()
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
 
 def open_options():
     settings_dialog = SettingsDialog(window)
-    settings_dialog.exec()
+    result = settings_dialog.exec()  # Use exec() and store the result
+
+    if result == QDialog.DialogCode.Accepted:  # Check if the user clicked "OK" or closed the dialog with "X"
+        global tesseract_folder, tesseract_path  # Declare globals in the function
+        user_data = load_user_data() # Reload user data
+        tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Get from cache or default
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe") # Update tesseract_path
 
 def get_system_metrics():
     # Get CPU utilization
@@ -687,6 +728,8 @@ last_model = user_data.get("last_model", "")
 last_temperature = user_data.get("temperature", 0.7)  # Default temperature
 do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox state
 do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
+tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Default path if not in cache
+tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
 
 # Dropdown for model selection
 model_var = QComboBox()

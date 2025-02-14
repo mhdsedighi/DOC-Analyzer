@@ -1,11 +1,12 @@
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QPushButton,
-                             QTextEdit, QComboBox, QSlider, QCheckBox,
-                             QMessageBox, QFileDialog, QMenu)
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTextEdit, QComboBox, QSlider, QCheckBox, QMessageBox, QFileDialog, QMenu,
+    QDialog, QLineEdit, QSpacerItem, QSizePolicy, QDialogButtonBox
+)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
 from PyQt6 import QtGui
-import ollama, enchant, sys, os, json ,re, string, time, math, psutil, pynvml
+import ollama, enchant, sys, os, json, re, string, time, math, psutil, pynvml
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
@@ -68,14 +69,14 @@ class OllamaWorkerThread(QThread):
 # Load the document cache
 def load_document_cache():
     if os.path.exists(DOCUMENT_CACHE_FILE):
-        with open(DOCUMENT_CACHE_FILE, "r") as file:
+        with open(DOCUMENT_CACHE_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
     return {}
 
 # Save the document cache
 def save_document_cache(cache):
-    with open(DOCUMENT_CACHE_FILE, "w") as file:
-        json.dump(cache, file, indent=4)
+    with open(DOCUMENT_CACHE_FILE, "w", encoding="utf-8") as file:
+        json.dump(cache, file, indent=4, ensure_ascii=False)
 
 # Function to fetch installed Ollama models
 def fetch_installed_models():
@@ -115,15 +116,41 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state. 4 Scenarios
     if not do_send_images:
-        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). Each text entry includes a file name and page number at the top of the text, structured as:
-                        { "file": "filename.pdf", "page": X, "content": "text data" }.
-                        Provide insights, summaries, or answers based on this textual content."""
+        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
+        {
+            "filename": "document_name",
+            "pages": [
+                {
+                    "page_number": 1,
+                    "content": "text content of the page",
+                    "images": []  # No images are included
+                },
+                ...
+            ]
+        }
+        Provide insights, summaries, or answers based on this textual content."""
     else:
-        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). Each entry includes a file name and page number at the top, structured as:
-                       { "file": "filename.pdf", "page": X, "content": "text or base64-encoded image or raw vector data (SVG)" }.
-                        Some entries may contain base64-encoded raster images (e.g., PNG, JPEG), while others may contain raw vector data (e.g., SVG) for scalable images. Consider both text and these visual elements when generating insights, summaries, or answers."""
+        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
+        {
+            "filename": "document_name",
+            "pages": [
+                {
+                    "page_number": 1,
+                    "content": "text content of the page. It may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.",
+                    "images": [
+                        "base64_encoded_image_1",
+                        "base64_encoded_image_2",
+                        ...
+                    ]  # Images are included as base64 strings
+                },
+                ...
+            ]
+        }
+        The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which correspond to the images provided in the 'images' field of the JSON object.
+        Consider both text and these visual elements when generating insights, summaries, or answers."""
+
     if do_mention_page_var.isChecked():
-        all_text += """When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
+        all_text += """ When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -137,50 +164,62 @@ def read_documents(folder_path):
                 cached_data = cache[file_path]
                 text_content = cached_data["text_content"]
                 word_count = cached_data["word_count"]
-                readable_percentage = cached_data["readable_percentage"]
                 image_content = cached_data.get("image_content", [])
+                file_message = cached_data.get("file_message", "")  # Get reading info from cache
 
-               
                 if do_read_image and image_content == "no image":  # Skip re-extraction if 'no image' is recorded and do_read_image is active
                     pass
                 else:
                     # Re-extract if images were not previously stored and do_read_image is True
                     if do_read_image and not image_content:  # and not file_ext=="txt"
-                        text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_read_image)
+                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
 
                         # Update the cache with new images or 'no image'
                         cache[file_path]["image_content"] = image_content if image_content else "no image"
+                        cache[file_path]["file_message"] = file_message  # Update OCR info
                         save_document_cache(cache)
                         new_files_read += 1  # Increment new file count if reprocessed
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, readable_percentage = extract_content_from_file(file_path, do_send_images)
+                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
 
-                if do_read_image and not image_content: 
+                if do_read_image and not image_content:
                     image_content = "no image"
 
                 cache[file_path] = {
                     "last_modified": last_modified,
                     "text_content": text_content,
                     "word_count": word_count,
-                    "readable_percentage": readable_percentage,
                     "image_content": image_content,  # Cache images or 'no image'
+                    "file_message": file_message,  # Cache reading info
                 }
                 save_document_cache(cache)
                 new_files_read += 1  # Increment counter for new files
 
-            # Add filename and extracted content to combined text
-            all_text += f"--- Below is the content of a document with the name {filename} ---\n"
-            for text_data in text_content:
-                all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
+            # Structure the document content as a JSON object (without word_count and file_message)
+            document_json = {
+                "filename": filename,
+                "pages": [
+                    {
+                        "page_number": i + 1,
+                        "content": page_content,
+                        "images": image_content if do_send_images and image_content != "no image" else []
+                    }
+                    for i, page_content in enumerate(text_content)
+                ]
+            }
+
+            # Append the JSON object to the document_text list
+            document_text.append(document_json)
 
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
             cursor.insertText(f"✔ Looked at: {filename}\n", system_format)  # Use system_format
             cursor.insertText(f"Word count: {word_count}\n", system_format)  # Use system_format
+            if file_message:
+                cursor.insertText(f"Alert: {file_message}\n", system_format)  # Add reading info
             if do_read_image:
-                cursor.insertText(f"Extracted images: {len(image_content) if image_content != 'no image' else 0}\n", system_format)  # Use system_format
-            cursor.insertText(f"Readable content: {readable_percentage:.2f}%\n", system_format)  # Use system_format
+                cursor.insertText(f"Extracted images: {len(image_content) if image_content != "no image" else 0}\n", system_format)  # Use system_format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
 
@@ -216,8 +255,10 @@ def chat_with_ai():
         chat_history_list.append({"role": "user", "content": user_input})
 
         # Combine the document text with the chat history
-        full_prompt = f"{document_text}\n\n" + "\n".join(
-            [f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
+        full_prompt = {
+            "documents": document_text,
+            "chat_history": chat_history_list
+        }
 
         try:
             # Start tracking elapsed time
@@ -228,7 +269,7 @@ def chat_with_ai():
 
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [{"role": "user", "content": json.dumps(full_prompt)}]
 
             # If the model supports images, include them in the messages
             if do_send_images:
@@ -365,6 +406,92 @@ def update_waiting_label_metrics():
     typehere_label.setText(
         f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
     )
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Settings")
+        self.setGeometry(100, 100, 400, 200)  # Set window size
+
+        # Layout
+        layout = QVBoxLayout()
+
+        # Label for Tesseract folder
+        tesseract_label = QLabel("Tesseract Folder Path:")
+        layout.addWidget(tesseract_label)
+
+        # QLineEdit for Tesseract folder path
+        self.tesseract_path_edit = QLineEdit()
+        self.tesseract_path_edit.setText(tesseract_folder)  # Set current path
+        layout.addWidget(self.tesseract_path_edit)
+
+        # Browse button for Tesseract folder
+        browse_button = QPushButton("Browse")
+        browse_button.clicked.connect(self.browse_tesseract_folder)
+        layout.addWidget(browse_button)
+
+        # Close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.close)
+        layout.addWidget(close_button)
+
+        self.setLayout(layout)
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+            print(f"Selected Tesseract folder: {tesseract_folder}")  # Debugging
+
+    def closeEvent(self, event):
+        # Save the tesseract_folder to the user data cache when the window is closed
+        global tesseract_folder
+        user_data = load_user_data()
+        user_data["tesseract_folder"] = tesseract_folder
+        save_user_data(**user_data)
+        print(f"Saving Tesseract folder to cache: {tesseract_folder}")  # Debugging
+        event.accept()
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+
+    def closeEvent(self, event):
+        global tesseract_folder, tesseract_path  # Declare globals explicitly
+        user_data = load_user_data()
+        user_data["tesseract_folder"] = self.tesseract_path_edit.text()  # Get from the edit box
+        save_user_data(**user_data)
+        tesseract_folder = self.tesseract_path_edit.text() # Update the global variable
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
+        event.accept()
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+
+def open_options():
+    settings_dialog = SettingsDialog(window)
+    result = settings_dialog.exec()  # Use exec() and store the result
+
+    if result == QDialog.DialogCode.Accepted:  # Check if the user clicked "OK" or closed the dialog with "X"
+        global tesseract_folder, tesseract_path  # Declare globals in the function
+        user_data = load_user_data() # Reload user data
+        tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Get from cache or default
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe") # Update tesseract_path
 
 def get_system_metrics():
     # Get CPU utilization
@@ -553,6 +680,7 @@ previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+
 # Define the initial text and style for typehere_label
 INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"
 INITIAL_TYPEHERE_STYLE = "color: green;"
@@ -600,6 +728,8 @@ last_model = user_data.get("last_model", "")
 last_temperature = user_data.get("temperature", 0.7)  # Default temperature
 do_mention_page = user_data.get("do_mention_page", False)  # Default checkbox state
 do_read_image = user_data.get("do_read_image", False)  # Default checkbox state
+tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Default path if not in cache
+tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
 
 # Dropdown for model selection
 model_var = QComboBox()
@@ -642,6 +772,10 @@ user_input_box.setMaximumHeight(100)
 user_input_box.setPlaceholderText("Please read documents first.")  # Set placeholder text
 main_layout.addWidget(user_input_box)
 
+# Create the "Options" button
+options_button = QPushButton("Options")
+options_button.setStyleSheet("background-color: #555555; color: white;")  # Customize appearance
+options_button.clicked.connect(open_options)  # Connect to the function
 
 # Create a horizontal layout for the buttons and slider
 bottom_layout = QHBoxLayout()
@@ -752,6 +886,10 @@ model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)
 
+#spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+#top_layout.addItem(spacer)
+top_layout.addWidget(options_button)
+
 update_model_description()
 
 model_var.currentIndexChanged.connect(update_model_description)
@@ -773,6 +911,8 @@ disable_ai_interaction() # for initial app start
 custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
 chat_history.setFont(custom_font)
 user_input_box.setFont(custom_font)
+
+
 
 window.show()
 window.setWindowTitle("A.I. Document Analyzer")

@@ -1,4 +1,4 @@
-'DOC Analyzer' reads all documents (PDF,Word,Text,PowerPointt,Excel,...) in a folder and sends it to your favorite local A.I.
+'DOCAnalyzer' reads all documents (PDF,Word,Text,PowerPointt,Excel,...) in a folder and sends it to your favorite local A.I.
 You can chat with A.I. about your documents.
 You can switch between folders easily.
 Image to Text (OCR) for PDFs is used when necessary.
@@ -26,6 +26,14 @@ for example:
 *** Make sure Ollama in running. (Its usually run automatically, but you can type 'ollama' in CMD to make sure)
 
  Run DocAnalayzer.exe
+
+4-Note for Scanned PDFs (non-formatted PDFs)
+ DOCAnalyzer automatically uses OCR technology for extracting text from scanned PDFs, Although it is recommended that you use a professional OCR software instead.
+	you have to:
+		-Download and install Tesseract software from here: https://github.com/tesseract-ocr/tesseract/releases
+		-While installing Tesseract, add any language that you want from "additional language data" (e.g. German, Russian, Persian, etc...). DOCAnalyzer will detect language 				from among them.
+		-Make sure you set the correct installation folder of Tesseract in DOCAnalyzer option window. (the default path is C:\Program Files\Tesseract-OCR)
+
 
 	   
 ------------------------

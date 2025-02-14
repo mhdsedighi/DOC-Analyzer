@@ -3,18 +3,15 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 import win32com.client
-import fitz
-import pdfplumber
-from PIL import Image
 from io import BytesIO
 import base64
-import pytesseract
+from modules.pdf_tools import extract_content_from_pdf
 
 
 # Function to extract text from a document based on its file type
-def extract_content_from_file(file_path,do_read_image):
+def extract_content_from_file(file_path,do_read_image,tesseract_path=None):
     if file_path.endswith(".pdf"):
-        return extract_content_from_pdf(file_path,do_read_image)
+        return extract_content_from_pdf(file_path,do_read_image,tesseract_path)
     elif file_path.endswith(".docx"):
         return extract_content_from_docx(file_path,do_read_image)
     elif file_path.endswith(".doc"):
@@ -30,7 +27,7 @@ def extract_content_from_file(file_path,do_read_image):
     elif file_path.endswith(".ppt"):
         return extract_content_from_ppt(file_path,do_read_image)
     else:
-        return [],[], 0, 0  # Unsupported file type
+        return [],[], 0,"Unsupported File"  # Unsupported file type
         
 
 # Function to extract text from a DOCX file
@@ -41,12 +38,11 @@ def extract_content_from_docx(docx_path,do_read_image):
 
     try:
         doc = Document(docx_path)
-        page_num = 1  # Since DOCX doesn’t have pages, treat all content as page 1
 
-        # Extract text
+        # Extract all text as a single string
         text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
         if text:
-            text_content.append({"page": page_num, "content": text})
+            text_content.append(text)  # Single-element list
             word_count = len(text.split())
 
         # Extract images if enabled
@@ -55,17 +51,17 @@ def extract_content_from_docx(docx_path,do_read_image):
                 if "image" in doc.part.rels[rel].target_ref:
                     image_data = doc.part.rels[rel].target_part.blob
                     img_base64 = base64.b64encode(image_data).decode("utf-8")
-                    image_content.append({"page": page_num, "content": img_base64})
+                    image_content.append(img_base64)
 
-        return text_content, image_content, word_count, 100  # Assume 100% readability
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"DOCX extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
 
 
 # Function to extract text and images from a DOC file (old Word format)
-def extract_content_from_doc(doc_path,do_read_image):
+def extract_content_from_doc(doc_path, do_read_image):
     text_content = []  # Stores extracted text
     image_content = []  # Stores extracted images
     word_count = 0
@@ -75,12 +71,10 @@ def extract_content_from_doc(doc_path,do_read_image):
         word.Visible = False
         doc = word.Documents.Open(os.path.abspath(doc_path))
 
-        # Extract text
+        # Extract all text as a single string
         text = doc.Content.Text.strip()
-        page_num = 1  # DOC files don’t have clear pages, so all content is assigned to page 1
-
         if text:
-            text_content.append({"page": page_num, "content": text})
+            text_content.append(text)  # Single-element list
             word_count = len(text.split())
 
         # Extract images if enabled
@@ -91,19 +85,20 @@ def extract_content_from_doc(doc_path,do_read_image):
                     image_data = image.SaveAsPicture()  # Save the image temporarily
                     with open(image_data, "rb") as img_file:
                         img_base64 = base64.b64encode(img_file.read()).decode("utf-8")
-                        image_content.append({"page": page_num, "content": img_base64})
+                        image_content.append(img_base64)
 
         doc.Close(False)
         word.Quit()
 
-        return text_content, image_content, word_count, 100  # Assume 100% readable for DOC files
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"DOC extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
+
 
 # Function to extract text from a TXT file
-def extract_content_from_txt(txt_path,do_read_image):
+def extract_content_from_txt(txt_path, do_read_image):
     text_content = []  # Stores extracted text
     image_content = []  # No images for TXT files
     word_count = 0
@@ -112,50 +107,48 @@ def extract_content_from_txt(txt_path,do_read_image):
         with open(txt_path, "r", encoding="utf-8") as file:
             text = file.read().strip()
 
-        page_num = 1  # Assume the entire document is on one page
         if text:
-            text_content.append({"page": page_num, "content": text})
+            text_content.append(text)  # Single-element list
             word_count = len(text.split())
 
-        return text_content, image_content, word_count, 100  # Assume 100% readability
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"TXT extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
 
 
 # Function to extract text from an XLSX file
-def extract_content_from_xlsx(xlsx_path,do_read_image):
-    text_content = []  # Stores extracted text per sheet (as pages)
+def extract_content_from_xlsx(xlsx_path, do_read_image):
+    text_content = []  # Stores extracted text
     image_content = []  # No images for XLSX files (unless explicitly handled)
     word_count = 0
 
     try:
         workbook = load_workbook(xlsx_path)
 
-        for page_num, sheet in enumerate(workbook.sheetnames, start=1):
-            sheet_text = ""
-
-            # Read each row in the sheet
+        # Extract all text as a single string
+        sheet_text = ""
+        for sheet in workbook.sheetnames:
             for row in workbook[sheet].iter_rows(values_only=True):
                 row_text = " ".join([str(cell) for cell in row if cell is not None])
                 if row_text.strip():
                     sheet_text += row_text + "\n"
 
-            if sheet_text.strip():
-                text_content.append({"page": page_num, "content": sheet_text})
-                word_count += len(sheet_text.split())
+        if sheet_text.strip():
+            text_content.append(sheet_text)  # Single-element list
+            word_count = len(sheet_text.split())
 
-        return text_content, image_content, word_count, 100  # Assume 100% readability
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"XLSX extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
 
 
 # Function to extract text from an XLS file (old Excel format)
-def extract_content_from_xls(xls_path,do_read_image):
-    text_content = []  # Stores extracted text per sheet (as pages)
+def extract_content_from_xls(xls_path, do_read_image):
+    text_content = []  # Stores extracted text
     image_content = []  # No images for XLS files
     word_count = 0
 
@@ -164,32 +157,30 @@ def extract_content_from_xls(xls_path,do_read_image):
         excel.Visible = False
         workbook = excel.Workbooks.Open(xls_path)
 
-        for page_num, sheet in enumerate(workbook.Sheets, start=1):
-            sheet_text = ""
-
-            # Read each row in the sheet
+        # Extract all text as a single string
+        sheet_text = ""
+        for sheet in workbook.Sheets:
             for row in sheet.UsedRange.Rows:
                 row_text = " ".join([str(cell) for cell in row.Value if cell is not None])
                 if row_text.strip():
                     sheet_text += row_text + "\n"
 
-            if sheet_text.strip():
-                text_content.append({"page": page_num, "content": sheet_text})
-                word_count += len(sheet_text.split())
+        if sheet_text.strip():
+            text_content.append(sheet_text)  # Single-element list
+            word_count = len(sheet_text.split())
 
         workbook.Close(False)  # Close without saving
         excel.Quit()
 
-        return text_content, image_content, word_count, 100  # Assume 100% readability
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"XLS extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
-
+        return [], [], 0, ""
 
 
 # Function to extract text and images from a PPTX file
-def extract_content_from_pptx(pptx_path,do_read_image):
+def extract_content_from_pptx(pptx_path, do_read_image):
     text_content = []  # Stores extracted text
     image_content = []  # Stores extracted images
     word_count = 0
@@ -218,14 +209,15 @@ def extract_content_from_pptx(pptx_path,do_read_image):
                         img_base64 = base64.b64encode(image_stream.getvalue()).decode("utf-8")
                         image_content.append({"page": slide_num, "content": img_base64})
 
-        return text_content, image_content, word_count, 100  # Assume 100% readable for PPTX
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"PPTX extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
+
 
 # Function to extract text and images from a PPT file (old PowerPoint format)
-def extract_content_from_ppt(ppt_path,do_read_image):
+def extract_content_from_ppt(ppt_path, do_read_image):
     text_content = []  # Stores extracted text
     image_content = []  # Stores extracted images
     word_count = 0
@@ -262,82 +254,8 @@ def extract_content_from_ppt(ppt_path,do_read_image):
         presentation.Close()
         powerpoint.Quit()
 
-        return text_content, image_content, word_count, 100  # Assume 100% readable for PPT
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"PPT extraction failed: {e}")
-        return [], [], 0, 0  # Assume 0% readable if extraction fails
-
-
-# Function to extract text and images from a PDF file
-def extract_content_from_pdf(pdf_path,do_read_image):
-    text_content = []  # Stores extracted text per page
-    image_content = []  # Stores extracted images per page if enabled
-    unreadable_pages = 0
-    total_pages = 0
-    word_count = 0
-    has_text = False
-
-    try:
-        # Open the PDF file
-        with pdfplumber.open(pdf_path) as pdf:
-            total_pages = len(pdf.pages)
-            doc = fitz.open(pdf_path)  # Open with PyMuPDF for image extraction
-
-            for page_num in range(total_pages):
-                page_text = pdf.pages[page_num].extract_text()
-
-                if page_text:
-                    text_content.append({"page": page_num + 1, "content": page_text})
-                    word_count += len(page_text.split())
-                    has_text = True
-                else:
-                    unreadable_pages += 1
-
-                if do_read_image or not page_text:
-                	# Extract raster images from the page
-                    fitz_page = doc.load_page(page_num)
-                    image_list = fitz_page.get_images(full=True)
-
-                    for img_index, img in enumerate(image_list):
-                        xref = img[0]  # XREF of the image
-                        base_image = doc.extract_image(xref)
-                        image_bytes = base_image["image"]
-
-                        # Convert image bytes to base64
-                        image = Image.open(BytesIO(image_bytes))
-                        # Convert CMYK images to RGB
-                        if image.mode == "CMYK":
-                            image = image.convert("RGB")
-                        buffered = BytesIO()
-                        image.save(buffered, format="PNG")
-                        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-
-                        image_content.append({"page": page_num + 1, "content": img_base64})
-
-                        # Apply OCR if needed
-                        if not page_text:
-                            ocr_text = pytesseract.image_to_string(image)
-                            if ocr_text.strip():
-                                text_content.append({"page": page_num + 1, "content": ocr_text})
-                                word_count += len(ocr_text.split())
-                                has_text = True
-
-        # If no text was found, force OCR for all pages
-        if not has_text:
-            for page_num in range(total_pages):
-                fitz_page = doc.load_page(page_num)
-                pix = fitz_page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                ocr_text = pytesseract.image_to_string(img)
-                if ocr_text.strip():
-                    text_content.append({"page": page_num + 1, "content": ocr_text})
-                    word_count += len(ocr_text.split())
-                    has_text = True
-
-        readable_percentage = 100 - (unreadable_pages / total_pages * 100) if total_pages > 0 else 100
-        return text_content, image_content, word_count, readable_percentage
-
-    except Exception as e:
-        print(f"Extraction failed: {e}")
-        return [], [], 0, 0
+        return [], [], 0, ""

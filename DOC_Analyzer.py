@@ -69,14 +69,14 @@ class OllamaWorkerThread(QThread):
 # Load the document cache
 def load_document_cache():
     if os.path.exists(DOCUMENT_CACHE_FILE):
-        with open(DOCUMENT_CACHE_FILE, "r") as file:
+        with open(DOCUMENT_CACHE_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
     return {}
 
 # Save the document cache
 def save_document_cache(cache):
-    with open(DOCUMENT_CACHE_FILE, "w") as file:
-        json.dump(cache, file, indent=4)
+    with open(DOCUMENT_CACHE_FILE, "w", encoding="utf-8") as file:
+        json.dump(cache, file, indent=4, ensure_ascii=False)
 
 # Function to fetch installed Ollama models
 def fetch_installed_models():

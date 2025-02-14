@@ -12,7 +12,7 @@ DOCUMENT_CACHE_FILE = os.path.join("cache", "document_cache.json")
 # Load user data (last folder path, last selected model, and temperature)
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):
-        with open(USER_DATA_FILE, "r") as file:
+        with open(USER_DATA_FILE, "r", encoding="utf-8") as file:
             user_data = json.load(file)
             return {
                 "last_folder": user_data.get("last_folder", ""),
@@ -56,5 +56,5 @@ def save_user_data(last_folder=None, last_model=None, temperature=None, last_fol
         user_data["last_folders"].insert(0, last_folder)
         user_data["last_folders"] = user_data["last_folders"][:10]  # Keep only the last 10
 
-    with open(USER_DATA_FILE, "w") as file:
-        json.dump(user_data, file, indent=4)
+    with open(USER_DATA_FILE, "w", encoding="utf-8") as file:
+        json.dump(user_data, file, indent=4, ensure_ascii=False)

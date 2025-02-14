@@ -174,8 +174,8 @@ def read_documents(folder_path):
 
             # Add filename and extracted content to combined text
             all_text += f"--- Below is the content of a document with the name {filename} ---\n"
-            for text_data in text_content:
-                all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
+            #for text_data in text_content:
+            #    all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
 
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end

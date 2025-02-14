@@ -10,8 +10,6 @@ import pytesseract
 import langid
 import pycountry
 import io
-from multiprocessing import Pool, cpu_count, Manager
-
 
 def extract_content_from_pdf(pdf_path,do_read_image):
     # Determines whether the PDF has selectable text. Calls the appropriate function.
@@ -203,10 +201,6 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         doc = fitz.open(pdf_path)
         print(f"PDF contains {len(doc)} pages.")
 
-        # Convert the PDF to bytes (shared across processes)
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-
         # Extract a text sample for language detection
         sample_text = ""
         sample_pages = min(3, len(doc))
@@ -223,44 +217,26 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
         detected_lang = detect_language(sample_text, installed_langs)
         print(f"Detected language: {detected_lang}")
 
-        # Use multiprocessing with an initializer to pass pdf_bytes
-        with Manager() as manager:
-            shared_pdf_bytes = manager.Value(bytes, pdf_bytes)
-            with Pool(processes=cpu_count(), initializer=init_worker, initargs=(shared_pdf_bytes,)) as pool:
-                results = pool.starmap(process_ocr_page, [(page_num, detected_lang) for page_num in range(len(doc))])
+        text_content = ""
+        # Loop through pages sequentially
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            print(f"Processing page {page_num + 1}...")
+            pix = page.get_pixmap()
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
 
-        text_content = [result[0] for result in results]
-        # images_content = [result[1] for result in results]
+            page_text, _ = perform_ocr(gray, detected_lang)  # Use detected language
+            text_content += page_text
+
 
         word_count = len(text_content.split())
-        return text_content, [],word_count,100,detected_lang
+        return text_content, [], word_count, 100, detected_lang
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return [], [],0,0,""
+        return [], [], 0, 0, ""
 
-
-# Global variable for worker processes
-worker_pdf = None
-
-
-def init_worker(shared_pdf_bytes):
-    """Initializer function to load the PDF once per worker."""
-    global worker_pdf
-    worker_pdf = fitz.open(stream=io.BytesIO(shared_pdf_bytes.get()))
-
-
-def process_ocr_page(page_num, lang):
-    """Process a single page using the globally stored PDF object."""
-    global worker_pdf
-    page = worker_pdf.load_page(page_num)
-    print(f"Processing page {page_num + 1}...")
-    pix = page.get_pixmap()
-    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
-
-    page_text, confidence = perform_ocr(gray, lang)
-    return page_text, []
 
 
 def perform_ocr(image, lang):

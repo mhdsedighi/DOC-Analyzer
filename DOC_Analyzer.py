@@ -886,8 +886,8 @@ model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)
 
-spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-top_layout.addItem(spacer)
+#spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+#top_layout.addItem(spacer)
 top_layout.addWidget(options_button)
 
 update_model_description()

@@ -3,12 +3,8 @@ from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
 import win32com.client
-import fitz
-import pdfplumber
-from PIL import Image
 from io import BytesIO
 import base64
-import pytesseract
 from modules.pdf_tools import extract_content_from_pdf
 
 

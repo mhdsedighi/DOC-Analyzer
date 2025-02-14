@@ -1,15 +1,12 @@
 import fitz  # PyMuPDF
-import json
 import base64
 import os
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
-from io import BytesIO
 import pytesseract
 import langid
 import pycountry
-import io
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def extract_content_from_pdf(pdf_path,do_read_image):

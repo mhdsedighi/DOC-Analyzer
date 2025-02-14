@@ -115,16 +115,41 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state. 4 Scenarios
     if not do_send_images:
-        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). Each text entry includes a file name and page number at the top of the text, structured as:
-                        { "file": "filename.pdf", "page": X, "content": "text data" }.
-                        Provide insights, summaries, or answers based on this textual content."""
+        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
+        {
+            "filename": "document_name",
+            "pages": [
+                {
+                    "page_number": 1,
+                    "content": "text content of the page",
+                    "images": []  # No images are included
+                },
+                ...
+            ]
+        }
+        Provide insights, summaries, or answers based on this textual content."""
     else:
-        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). Each entry includes a file name and page number at the top, structured as:
-                       { "file": "filename.pdf", "page": X, "content": "text or base64-encoded image or raw vector data (SVG)" }.
-                       The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.
-                        Some entries may contain base64-encoded raster images (e.g., PNG, JPEG), while others may contain raw vector data (e.g., SVG) for scalable images. Consider both text and these visual elements when generating insights, summaries, or answers."""
+        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
+        {
+            "filename": "document_name",
+            "pages": [
+                {
+                    "page_number": 1,
+                    "content": "text content of the page. It may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.",
+                    "images": [
+                        "base64_encoded_image_1",
+                        "base64_encoded_image_2",
+                        ...
+                    ]  # Images are included as base64 strings
+                },
+                ...
+            ]
+        }
+        The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which correspond to the images provided in the 'images' field of the JSON object.
+        Consider both text and these visual elements when generating insights, summaries, or answers."""
+
     if do_mention_page_var.isChecked():
-        all_text += """When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
+        all_text += """ When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
 
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
@@ -170,10 +195,21 @@ def read_documents(folder_path):
                 save_document_cache(cache)
                 new_files_read += 1  # Increment counter for new files
 
-            # Add filename and extracted content to combined text
-            all_text += f"--- Below is the content of a document with the name {filename} ---\n"
-            #for text_data in text_content:
-            #    all_text += f"[Page {text_data['page']}]: {text_data['content']}\n\n"
+            # Structure the document content as a JSON object (without word_count and file_message)
+            document_json = {
+                "filename": filename,
+                "pages": [
+                    {
+                        "page_number": i + 1,
+                        "content": page_content,
+                        "images": image_content if do_send_images and image_content != "no image" else []
+                    }
+                    for i, page_content in enumerate(text_content)
+                ]
+            }
+
+            # Append the JSON object to the document_text list
+            document_text.append(document_json)
 
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
@@ -182,7 +218,7 @@ def read_documents(folder_path):
             if file_message:
                 cursor.insertText(f"Alert: {file_message}\n", system_format)  # Add reading info
             if do_read_image:
-                cursor.insertText(f"Extracted images: {len(image_content) if image_content != 'no image' else 0}\n", system_format)  # Use system_format
+                cursor.insertText(f"Extracted images: {len(image_content) if image_content != "no image" else 0}\n", system_format)  # Use system_format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
 
@@ -218,8 +254,10 @@ def chat_with_ai():
         chat_history_list.append({"role": "user", "content": user_input})
 
         # Combine the document text with the chat history
-        full_prompt = f"{document_text}\n\n" + "\n".join(
-            [f"{msg['role']}: {msg['content']}" for msg in chat_history_list])
+        full_prompt = {
+            "documents": document_text,
+            "chat_history": chat_history_list
+        }
 
         try:
             # Start tracking elapsed time
@@ -230,7 +268,7 @@ def chat_with_ai():
 
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
-            messages = [{"role": "user", "content": full_prompt}]
+            messages = [{"role": "user", "content": json.dumps(full_prompt)}]
 
             # If the model supports images, include them in the messages
             if do_send_images:

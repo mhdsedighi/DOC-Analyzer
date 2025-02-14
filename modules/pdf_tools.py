@@ -23,16 +23,14 @@ def extract_content_from_pdf(pdf_path,do_read_image):
 
 
 def extract_formatted_pdf(pdf_path,do_read_image):
-    text_content = ""
+    text_content = []  # a list to store each page's content
     images_content = []
     img_dir = "imgextract"
     os.makedirs(img_dir, exist_ok=True)
-
     print("Opening PDF file...")
     doc = fitz.open(pdf_path)
     print(f"PDF contains {len(doc)} pages.")
     pdf_name = os.path.splitext(os.path.basename(pdf_path))[0]
-
     image_index = 0
     extracted_boxes = []  # Track bounding boxes of extracted images
 
@@ -172,7 +170,7 @@ def extract_formatted_pdf(pdf_path,do_read_image):
         # Sort elements by their vertical (y) and horizontal (x) positions
         page_elements.sort(key=lambda elem: (elem["bbox"][1], elem["bbox"][0]))  # Sort by y, then x
 
-        # Build the text with inline placeholders
+        # Build the text with inline placeholders for this page
         page_text_with_placeholders = ""
         for elem in page_elements:
             if elem["type"] == "text":
@@ -180,9 +178,10 @@ def extract_formatted_pdf(pdf_path,do_read_image):
             elif elem["type"] == "image":
                 page_text_with_placeholders += elem["content"]
 
-        text_content += page_text_with_placeholders + "\n"
+        # Append the page's content to the list
+        text_content.append(page_text_with_placeholders)
 
-    word_count = len(text_content.split())
+    word_count = sum(len(page.split()) for page in text_content)
     return text_content, images_content,word_count,""
 
 
@@ -224,18 +223,17 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
             return perform_ocr(gray, detected_lang)
 
         # Use ThreadPoolExecutor for parallel processing
-        text_content = ""
+        text_content = []
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(process_page, page_num) for page_num in range(len(doc))]
 
             # Collect results as they complete
             for future in as_completed(futures):
                 page_text, _ = future.result()
-                text_content += page_text
+                text_content.append(page_text)  # Append page text to the list
 
-        word_count = len(text_content.split())
+        word_count = sum(len(page.split()) for page in text_content)
         message="OCR used. Language: " + detected_lang
-
         return text_content, [], word_count, message
 
     except Exception as e:

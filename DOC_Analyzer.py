@@ -1,11 +1,12 @@
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QLabel, QPushButton,
-                             QTextEdit, QComboBox, QSlider, QCheckBox,
-                             QMessageBox, QFileDialog, QMenu)
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTextEdit, QComboBox, QSlider, QCheckBox, QMessageBox, QFileDialog, QMenu,
+    QDialog, QLineEdit, QSpacerItem, QSizePolicy, QDialogButtonBox  # New imports
+)
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
 from PyQt6 import QtGui
-import ollama, enchant, sys, os, json ,re, string, time, math, psutil, pynvml
+import ollama, enchant, sys, os, json, re, string, time, math, psutil, pynvml
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
@@ -408,6 +409,49 @@ def update_waiting_label_metrics():
         f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
     )
 
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Settings")
+        self.setGeometry(100, 100, 400, 200)  # Set window size
+
+        # Layout
+        layout = QVBoxLayout()
+
+        # Label for Tesseract folder
+        tesseract_label = QLabel("Tesseract Folder Path:")
+        layout.addWidget(tesseract_label)
+
+        # QLineEdit for Tesseract folder path
+        self.tesseract_path_edit = QLineEdit()
+        self.tesseract_path_edit.setText(tesseract_folder)  # Set current path
+        layout.addWidget(self.tesseract_path_edit)
+
+        # Browse button for Tesseract folder
+        browse_button = QPushButton("Browse")
+        browse_button.clicked.connect(self.browse_tesseract_folder)
+        layout.addWidget(browse_button)
+
+        # Close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.close)
+        layout.addWidget(close_button)
+
+        self.setLayout(layout)
+
+    def browse_tesseract_folder(self):
+        # Open a folder dialog to select the Tesseract folder
+        folder = QFileDialog.getExistingDirectory(self, "Select Tesseract Folder")
+        if folder:
+            self.tesseract_path_edit.setText(folder)
+            global tesseract_folder, tesseract_path
+            tesseract_folder = folder  # Update the global variable
+            tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
+
+def open_options():
+    settings_dialog = SettingsDialog(window)
+    settings_dialog.exec()
+
 def get_system_metrics():
     # Get CPU utilization
     cpu_usage = psutil.cpu_percent(interval=0.1)  # CPU usage in percentage
@@ -685,6 +729,10 @@ user_input_box.setMaximumHeight(100)
 user_input_box.setPlaceholderText("Please read documents first.")  # Set placeholder text
 main_layout.addWidget(user_input_box)
 
+# Create the "Options" button
+options_button = QPushButton("Options")
+options_button.setStyleSheet("background-color: #555555; color: white;")  # Customize appearance
+options_button.clicked.connect(open_options)  # Connect to the function
 
 # Create a horizontal layout for the buttons and slider
 bottom_layout = QHBoxLayout()
@@ -794,6 +842,10 @@ top_layout.addWidget(model_var)
 model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)
+
+spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+top_layout.addItem(spacer)
+top_layout.addWidget(options_button)
 
 update_model_description()
 

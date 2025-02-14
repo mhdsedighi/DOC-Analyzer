@@ -27,7 +27,7 @@ def extract_content_from_file(file_path,do_read_image):
     elif file_path.endswith(".ppt"):
         return extract_content_from_ppt(file_path,do_read_image)
     else:
-        return [],[], 0, 0,"NO"  # Unsupported file type
+        return [],[], 0,"Unsupported File"  # Unsupported file type
         
 
 # Function to extract text from a DOCX file
@@ -54,11 +54,11 @@ def extract_content_from_docx(docx_path,do_read_image):
                     img_base64 = base64.b64encode(image_data).decode("utf-8")
                     image_content.append({"page": page_num, "content": img_base64})
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readability
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"DOCX extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0, ""
 
 
 # Function to extract text and images from a DOC file (old Word format)
@@ -93,11 +93,11 @@ def extract_content_from_doc(doc_path,do_read_image):
         doc.Close(False)
         word.Quit()
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readable for DOC files
+        return text_content, image_content, word_count, ""
 
     except Exception as e:
         print(f"DOC extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0,""
 
 # Function to extract text from a TXT file
 def extract_content_from_txt(txt_path,do_read_image):
@@ -114,11 +114,11 @@ def extract_content_from_txt(txt_path,do_read_image):
             text_content.append({"page": page_num, "content": text})
             word_count = len(text.split())
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readability
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"TXT extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0,""
 
 
 # Function to extract text from an XLSX file
@@ -143,11 +143,11 @@ def extract_content_from_xlsx(xlsx_path,do_read_image):
                 text_content.append({"page": page_num, "content": sheet_text})
                 word_count += len(sheet_text.split())
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readability
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"XLSX extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0,""
 
 
 # Function to extract text from an XLS file (old Excel format)
@@ -177,11 +177,11 @@ def extract_content_from_xls(xls_path,do_read_image):
         workbook.Close(False)  # Close without saving
         excel.Quit()
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readability
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"XLS extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0,""
 
 
 
@@ -215,11 +215,11 @@ def extract_content_from_pptx(pptx_path,do_read_image):
                         img_base64 = base64.b64encode(image_stream.getvalue()).decode("utf-8")
                         image_content.append({"page": slide_num, "content": img_base64})
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readable for PPTX
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"PPTX extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0,"NO"
 
 # Function to extract text and images from a PPT file (old PowerPoint format)
 def extract_content_from_ppt(ppt_path,do_read_image):
@@ -259,8 +259,8 @@ def extract_content_from_ppt(ppt_path,do_read_image):
         presentation.Close()
         powerpoint.Quit()
 
-        return text_content, image_content, word_count, 100, "NO"  # Assume 100% readable for PPT
+        return text_content, image_content, word_count,""
 
     except Exception as e:
         print(f"PPT extraction failed: {e}")
-        return [], [], 0, 0, "NO"  # Assume 0% readable if extraction fails
+        return [], [], 0, ""

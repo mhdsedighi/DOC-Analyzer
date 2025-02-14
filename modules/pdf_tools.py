@@ -183,7 +183,7 @@ def extract_formatted_pdf(pdf_path,do_read_image):
         text_content += page_text_with_placeholders + "\n"
 
     word_count = len(text_content.split())
-    return text_content, images_content,word_count,100,"NO"
+    return text_content, images_content,word_count,""
 
 
 def extract_printed_pdf(pdf_path, tesseract_path=None):
@@ -234,11 +234,13 @@ def extract_printed_pdf(pdf_path, tesseract_path=None):
                 text_content += page_text
 
         word_count = len(text_content.split())
-        return text_content, [], word_count, 100, detected_lang
+        message="OCR used. Language: " + detected_lang
+
+        return text_content, [], word_count, message
 
     except Exception as e:
         print(f"An error occurred: {e}")
-        return [], [], 0, 0, ""
+        return [], [], 0, "OCR Failed"
 
 
 

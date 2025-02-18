@@ -58,34 +58,55 @@ with st.sidebar:
     else:
         st.warning("No models found. Please install a model.")
 
+    # Ensure at least one chat exists
+    if not hasattr(st.session_state, "chats") or not st.session_state.chats:
+        st.session_state.chats = [{"name": "Chat 1", "history": []}]
+        st.session_state.current_chat_index = 0
+
     st.markdown("### Chats")
-    chat_names = [chat["name"] for chat in st.session_state.chats]
-    current_chat_name = st.session_state.chats[st.session_state.current_chat_index]["name"]
 
-    # Display chat selection dropdown
-    selected_chat_index = st.selectbox("Select Chat", chat_names, index=chat_names.index(current_chat_name))
+    for index, chat in enumerate(st.session_state.chats):
+        col1, col2 = st.columns([4, 1])  # Chat name and options button
+        if st.session_state.current_chat_index == index:
+            col1.markdown(f"**{chat['name']}**")  # Highlight active chat
+        else:
+            col1.write(chat["name"])  # Normal display
 
-    # Update current chat index based on selection
-    if selected_chat_index != current_chat_name:
-        st.session_state.current_chat_index = chat_names.index(selected_chat_index)
-        save_session_state(SESSION_FILE)
-        st.rerun()
+        with col2:
+            if st.button("⋮", key=f"menu_{index}"):
+                st.session_state[f"menu_open_{index}"] = not st.session_state.get(f"menu_open_{index}", False)
 
-    # Add new chat button
+        if st.session_state.get(f"menu_open_{index}", False):
+            with st.expander("Chat Options", expanded=True):
+                # Rename chat
+                new_name = st.text_input("Rename chat:", value=chat["name"], key=f"rename_{index}")
+                if st.button("Save", key=f"save_rename_{index}"):
+                    st.session_state.chats[index]["name"] = new_name
+                    st.session_state[f"menu_open_{index}"] = False
+                    save_session_state(SESSION_FILE)
+                    st.rerun()
+
+                # Delete chat (Allows deleting last one, but creates a new default if empty)
+                if st.button("Delete Chat", key=f"delete_{index}"):
+                    del st.session_state.chats[index]
+
+                    if not st.session_state.chats:  # If no chats left, create a default one
+                        st.session_state.chats = [{"name": "Chat 1", "history": []}]
+                        st.session_state.current_chat_index = 0
+                    else:
+                        st.session_state.current_chat_index = min(index, len(st.session_state.chats) - 1)
+
+                    st.session_state[f"menu_open_{index}"] = False
+                    save_session_state(SESSION_FILE)
+                    st.rerun()
+
+    # Add new chat button at the bottom
     if st.button("New Chat"):
         new_chat_name = f"Chat {len(st.session_state.chats) + 1}"
         st.session_state.chats.append({"name": new_chat_name, "history": []})
         st.session_state.current_chat_index = len(st.session_state.chats) - 1
         save_session_state(SESSION_FILE)
         st.rerun()
-
-    # Delete chat button
-    if len(st.session_state.chats) > 1:
-        if st.button("Delete Chat"):
-            del st.session_state.chats[st.session_state.current_chat_index]
-            st.session_state.current_chat_index = min(st.session_state.current_chat_index, len(st.session_state.chats) - 1)
-            save_session_state(SESSION_FILE)
-            st.rerun()
 
 st.title("Chat with Ollama")
 

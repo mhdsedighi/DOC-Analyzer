@@ -53,7 +53,11 @@ with st.sidebar:
     st.markdown("### Settings")
     models = get_installed_models()
     if models:
-        st.session_state.selected_model = st.selectbox("Select Model", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
+        st.session_state.selected_model = st.selectbox(
+            "Select Model",
+            models,
+            index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0
+        )
     else:
         st.warning("No models found. Please install a model.")
 
@@ -80,8 +84,14 @@ for i in range(len(st.session_state.chat_history)):
                 st.rerun()
         else:
             st.markdown(user_text)
-            if st.button("Edit", key=f"edit_btn_{i}"):
+            # Add "Edit" and "Delete" buttons
+            col1, col2 = st.columns([1, 1])
+            if col1.button("Edit", key=f"edit_btn_{i}"):
                 st.session_state.editing_index = i
+                st.rerun()
+            if col2.button("Delete", key=f"delete_btn_{i}"):
+                st.session_state.chat_history.pop(i)  # Remove the message and its response
+                save_session_state(SESSION_FILE)  # Save session state immediately
                 st.rerun()
     with st.chat_message("assistant"):
         st.markdown(ai_text)

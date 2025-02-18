@@ -1,7 +1,7 @@
 import streamlit as st
 import ollama
 
-
+# Function to get installed models
 def get_installed_models():
     try:
         models_response = ollama.list()  # Fetch the list of installed models
@@ -46,7 +46,6 @@ for i in range(len(st.session_state.chat_history)):
                 st.session_state.chat_history = st.session_state.chat_history[:i]  # Remove subsequent history
                 st.session_state.chat_history.append((new_input, ""))  # Update input, reset AI response
                 st.session_state.editing_index = None
-
                 # Fetch new AI response
                 model = st.session_state.selected_model
                 if model:
@@ -77,3 +76,11 @@ if st.button("Send") and user_input.strip():
         st.rerun()
     else:
         st.warning("Please select a model first.")
+
+# Run the app directly if executed as a script
+if __name__ == "__main__":
+    import sys
+    import subprocess
+
+    if "streamlit" not in sys.modules:
+        subprocess.run([sys.executable, "-m", "streamlit", "run", sys.argv[0]] + sys.argv[1:])

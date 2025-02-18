@@ -64,18 +64,15 @@ with st.sidebar:
         st.session_state.current_chat_index = 0
 
     st.markdown("### Chats")
-
     for index, chat in enumerate(st.session_state.chats):
         col1, col2 = st.columns([4, 1])  # Chat name and options button
         if st.session_state.current_chat_index == index:
             col1.markdown(f"**{chat['name']}**")  # Highlight active chat
         else:
             col1.write(chat["name"])  # Normal display
-
         with col2:
             if st.button("⋮", key=f"menu_{index}"):
                 st.session_state[f"menu_open_{index}"] = not st.session_state.get(f"menu_open_{index}", False)
-
         if st.session_state.get(f"menu_open_{index}", False):
             with st.expander("Chat Options", expanded=True):
                 # Rename chat
@@ -89,13 +86,11 @@ with st.sidebar:
                 # Delete chat (Allows deleting last one, but creates a new default if empty)
                 if st.button("Delete Chat", key=f"delete_{index}"):
                     del st.session_state.chats[index]
-
                     if not st.session_state.chats:  # If no chats left, create a default one
                         st.session_state.chats = [{"name": "Chat 1", "history": []}]
                         st.session_state.current_chat_index = 0
                     else:
                         st.session_state.current_chat_index = min(index, len(st.session_state.chats) - 1)
-
                     st.session_state[f"menu_open_{index}"] = False
                     save_session_state(SESSION_FILE)
                     st.rerun()
@@ -136,8 +131,8 @@ if "editing_index" not in st.session_state:
 if st.session_state.editing_index is not None:
     edit_index = st.session_state.editing_index
     user_text, _ = current_chat["history"][edit_index]
-    new_input = st.text_area("Edit your input:", user_text, key=f"edit_input_{st.session_state.current_chat_index}")
-    if st.button("Submit Edit", key=f"submit_edit_{st.session_state.current_chat_index}"):
+    new_input = st.text_area("Edit your input:", user_text, key=f"edit_input_{edit_index}")
+    if st.button("Submit Edit", key=f"submit_edit_{edit_index}"):
         current_chat["history"] = current_chat["history"][:edit_index]  # Remove subsequent history
         current_chat["history"].append((new_input, ""))  # Update input, reset AI response
         st.session_state.editing_index = None
@@ -151,7 +146,17 @@ if st.session_state.editing_index is not None:
         st.rerun()
 else:
     # Use a unique key for the input text area based on the current chat index
-    user_input = st.text_area("Enter your message:", key=f"new_input_{st.session_state.current_chat_index}")
+    input_key = f"new_input_{st.session_state.current_chat_index}"
+    clear_input_key = f"clear_input_{st.session_state.current_chat_index}"
+
+    # Initialize or reset the clear_input flag for the current chat
+    if clear_input_key not in st.session_state:
+        st.session_state[clear_input_key] = False
+
+    # Conditionally set the default value of the input field
+    default_value = "" if st.session_state[clear_input_key] else None
+    user_input = st.text_area("Enter your message:", value=default_value, key=input_key)
+
     if st.button("Send", key=f"send_{st.session_state.current_chat_index}") and user_input.strip():
         model = st.session_state.selected_model
         if model:
@@ -160,6 +165,7 @@ else:
                 ai_response = response["message"]["content"] if "message" in response else "Error in response"
                 current_chat["history"].append((user_input, ai_response))
             save_session_state(SESSION_FILE)
+            st.session_state[clear_input_key] = True  # Mark input to be cleared
             st.rerun()
         else:
             st.warning("Please select a model first.")

@@ -22,6 +22,8 @@ if "editing_index" not in st.session_state:
     st.session_state.editing_index = None  # Index of the input being edited
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = ""  # Stores selected model
+if "new_input_key" not in st.session_state:
+    st.session_state.new_input_key = "new_input_0"  # Key for the new input text area
 
 # Sidebar for model selection
 with st.sidebar:
@@ -52,19 +54,17 @@ for i in range(len(st.session_state.chat_history)):
                         response = ollama.chat(model=model, messages=[{"role": "user", "content": new_input}])
                         ai_response = response["message"]["content"] if "message" in response else "Error in response"
                         st.session_state.chat_history[-1] = (new_input, ai_response)
-
                 st.rerun()
         else:
             st.markdown(user_text)
             if st.button("Edit", key=f"edit_btn_{i}"):
                 st.session_state.editing_index = i
                 st.rerun()
-
     with st.chat_message("assistant"):
         st.markdown(ai_text)
 
 # User input
-user_input = st.text_area("Enter your message:", key="new_input")
+user_input = st.text_area("Enter your message:", key=st.session_state.new_input_key)
 if st.button("Send") and user_input.strip():
     model = st.session_state.selected_model
     if model:
@@ -72,6 +72,8 @@ if st.button("Send") and user_input.strip():
             response = ollama.chat(model=model, messages=[{"role": "user", "content": user_input}])
             ai_response = response["message"]["content"] if "message" in response else "Error in response"
             st.session_state.chat_history.append((user_input, ai_response))
-            st.rerun()
+        # Reset the input field by updating the key
+        st.session_state.new_input_key = f"new_input_{len(st.session_state.chat_history)}"
+        st.rerun()
     else:
         st.warning("Please select a model first.")

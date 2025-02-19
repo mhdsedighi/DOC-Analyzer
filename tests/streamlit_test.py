@@ -66,12 +66,13 @@ with st.sidebar:
     st.markdown("### Chats")
     for index, chat in enumerate(st.session_state.chats):
         col1, col2 = st.columns([4, 1])  # Chat name and options button
-        if st.session_state.current_chat_index == index:
-            col1.markdown(f"**{chat['name']}**")  # Highlight active chat
-        else:
-            col1.write(chat["name"])  # Normal display
+        if col1.button(chat["name"], key=f"chat_{index}"):  # Make chat name clickable
+            st.session_state.current_chat_index = index
+            save_session_state(SESSION_FILE)
+            st.rerun()
+
         with col2:
-            if st.button("⋮", key=f"menu_{index}"):
+            if st.button("...", key=f"menu_{index}"):
                 st.session_state[f"menu_open_{index}"] = not st.session_state.get(f"menu_open_{index}", False)
         if st.session_state.get(f"menu_open_{index}", False):
             with st.expander("Chat Options", expanded=True):
@@ -169,8 +170,3 @@ else:
             st.rerun()
         else:
             st.warning("Please select a model first.")
-
-# Save session state on app exit
-st.session_state.save_on_exit = True
-if st.session_state.save_on_exit:
-    save_session_state(SESSION_FILE)

@@ -701,9 +701,6 @@ app = QApplication(sys.argv)
 window = QMainWindow()
 window.setWindowTitle("AI Document Analyzer")
 
-# Set the background color of the main window to gray
-window.setStyleSheet("background-color: #333333;")
-
 # Create a central widget
 central_widget = QWidget()
 window.setCentralWidget(central_widget)
@@ -759,7 +756,6 @@ top_layout.addWidget(read_button)
 # Chat history display
 chat_history = QTextEdit()
 chat_history.setReadOnly(True)
-chat_history.setStyleSheet("background-color: #444444; color: white;")
 main_layout.addWidget(chat_history)
 
 # Sample text label
@@ -769,7 +765,6 @@ main_layout.addWidget(typehere_label)
 
 # User input box
 user_input_box = SpellCheckTextEdit()
-user_input_box.setStyleSheet("background-color: #444444; color: white;")
 user_input_box.setMaximumHeight(100)
 user_input_box.setPlaceholderText("Please read documents first.")  # Set placeholder text
 main_layout.addWidget(user_input_box)

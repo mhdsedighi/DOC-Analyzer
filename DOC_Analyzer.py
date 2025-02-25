@@ -109,7 +109,7 @@ def browse_folder():
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
-    document_text = []  # this appears to fix adding extra texts when changing folder
+    global document_text  # this appears to fix adding extra texts when changing folder
     cache = load_document_cache()
     new_files_read = 0  # Track the number of new files read
     document_images = []  # List to store images from documents
@@ -269,7 +269,8 @@ def chat_with_ai():
 
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
-            messages = [{"role": "user", "content": json.dumps(full_prompt)}]
+            messages = [{"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
+            messages.append({"role": "user", "content": json.dumps(full_prompt)})
 
             # If the model supports images, include them in the messages
             if do_send_images:
@@ -540,7 +541,8 @@ def clear_chat_history():
 # Function to set the folder path
 def set_folder_path():
     global document_text
-    document_text = ""  # Clear the previous document text
+    global document_text_intro
+    document_text = []  # Clear the previous document text
     global document_images
     read_button.setText("Reading...")
     QApplication.processEvents()  # Force the UI update if you don't use QThread
@@ -556,7 +558,7 @@ def set_folder_path():
 
     disable_ai_interaction()
     # Read documents from the new folder
-    document_text, new_files_read, document_images = read_documents(folder_path)
+    document_text_intro, new_files_read, document_images = read_documents(folder_path)
     cursor = chat_history.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
     cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n", other_system_format)
@@ -806,7 +808,6 @@ send_button.setEnabled(False)  # Disable initially
 clear_button = QPushButton("Clear")
 clear_button.setStyleSheet("background-color: lightcoral; color: black;")
 clear_button.clicked.connect(clear_chat_history)
-
 
 copy_button = QPushButton("Copy History")
 copy_button.clicked.connect(copy_to_clipboard)

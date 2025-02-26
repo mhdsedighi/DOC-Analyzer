@@ -27,10 +27,10 @@ chat_history_list = []  # List to store the conversation history
 
 # Define color formats for chat history
 user_format = QTextCharFormat()
-user_format.setForeground(QColor("lightblue"))  # User messages in light blue
+user_format.setForeground(QColor("blue"))  # User messages in light blue
 
 ai_format = QTextCharFormat()
-ai_format.setForeground(QColor("lightgreen"))  # AI responses in light green
+# ai_format.setForeground(QColor("lightgreen"))  # AI responses in light green
 
 system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray

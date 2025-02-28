@@ -50,17 +50,19 @@ or close the APP and Click on 'Update_App' once in a while to get the latest .ex
 --------------------------------------------------------------------------------------------
 If you are an advanced user, you can Run (or build) the APP yourself, especially if you need executable file for Linux or macOS.
 
-1-Insatll Python ( from here: https://www.python.org/downloads )
+1-Insatll Anaconda ( from here: https://www.anaconda.com/download )
 
 
-2-Install required Python packages with CMD command:
-pip install -r requirements.txt
+2-Set the environment:
+cd <project-folder> (or just open cmd in project folder)
+conda env create -f environment.yml
 
 3-Run the APP
 get the latest version of the code from GitHub: (https://github.com/mhdsedighi/DOC-Analyzer/archive/refs/heads/master.zip)
 *** Make sure your VPN or Proxy software is Not Active!
 open a CMD in this Folder
 Click on the 'Run' (for Windows) file or enter this command in CMD
+		conda activate da-env
 		python .\DOC_Analyzer.py
 
 I am actively developing this code. So if you don't know how to work with Git, just click on 'Update_Code' once in a while to get the latest python code.

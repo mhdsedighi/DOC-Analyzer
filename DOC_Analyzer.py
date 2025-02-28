@@ -7,16 +7,24 @@ from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
 from PyQt6 import QtGui
 import ollama, enchant, sys, os, json, re, string, time, math, psutil, pynvml
-from modules.file_read import extract_content_from_file
+from modules.file_read import extract_content_from_file, is_file_in_chroma, set_chroma_db
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
 from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 import chromadb
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
     os.makedirs("cache")
+CHROMA_DIR = os.path.join("cache", "chroma_db_docs")
+if not os.path.exists(CHROMA_DIR):
+    os.makedirs(CHROMA_DIR)
 
 # File paths for saving user data and cache
 USER_DATA_FILE = os.path.join("cache", "user_data.json")
@@ -116,9 +124,10 @@ def browse_folder():
 
 # Initialize Chroma client for document retrieval
 chroma_client = chromadb.PersistentClient(
+    path=CHROMA_DIR,  # Explicitly set the path
     settings=chromadb.Settings(
         is_persistent=True,
-        persist_directory=os.path.join("cache", "chroma_db_docs"),
+        persist_directory=CHROMA_DIR,
         allow_reset=True
     )
 )
@@ -127,6 +136,8 @@ chroma_db = Chroma(
     collection_name="documents",
     embedding_function=FastEmbedEmbeddings()
 )
+logger.info(f"Chroma initialized with persist_directory: {chroma_client._system.settings.persist_directory}")
+set_chroma_db(chroma_db)  # Pass the Chroma instance to file_read.py
 
 
 # Function to read all documents in a folder
@@ -152,8 +163,17 @@ def read_documents(folder_path):
         if file_ext in SUPPORTED_EXTENSIONS:
             last_modified = os.path.getmtime(file_path)
 
-            # Check if file is in cache and hasn't been modified
-            if file_path in cache and cache[file_path]["last_modified"] == last_modified:
+            # Check if file needs to be re-read (not in Chroma or modified)
+            needs_reread = False
+            if not is_file_in_chroma(file_path):
+                needs_reread = True
+            elif file_path in cache and cache[file_path]["last_modified"] != last_modified:
+                needs_reread = True
+                # Remove old entries from Chroma if modified
+                logger.info(f"Deleting old Chroma entries for {filename}")
+                chroma_db.delete(where={"filename": filename})
+
+            if file_path in cache and not needs_reread:
                 cached_data = cache[file_path]
                 text_content = cached_data["text_content"]
                 word_count = cached_data["word_count"]

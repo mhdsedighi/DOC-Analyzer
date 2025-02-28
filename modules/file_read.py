@@ -10,24 +10,49 @@ from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb
+import logging
 
-# Initialize Chroma client and text splitter
-client_settings = chromadb.Settings(
-    is_persistent=True,
-    persist_directory=os.path.join("cache", "chroma_db_docs"),
-    allow_reset=True
-)
-chroma_client = chromadb.PersistentClient(settings=client_settings)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Text splitter initialized globally
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=60)
+
+# Chroma database will be set from the main script
+chroma_db = None
+
+
+# Function to set the Chroma database from the main script
+def set_chroma_db(db):
+    global chroma_db
+    chroma_db = db
+    logger.info(
+        f"Chroma DB set in file_read.py with persist_directory: {chroma_db._client._system.settings.persist_directory}")
+
+
+# Function to check if a file is already in Chroma
+def is_file_in_chroma(file_path):
+    if chroma_db is None:
+        raise ValueError("Chroma database not initialized")
+    filename = os.path.basename(file_path)
+    existing_docs = chroma_db.get(where={"filename": filename})
+    logger.info(f"Checking if {filename} is in Chroma: {len(existing_docs['documents']) > 0}")
+    return len(existing_docs["documents"]) > 0
+
 
 # Function to extract text from a document based on its file type and store in Chroma
 def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
+    if chroma_db is None:
+        raise ValueError("Chroma database not initialized")
+
     filename = os.path.basename(file_path)
     file_ext = os.path.splitext(filename)[1].lower()
 
     # Extract content based on file type
     if file_path.endswith(".pdf"):
-        text_content, image_content, word_count, file_message = extract_content_from_pdf(file_path, do_read_image, tesseract_path)
+        text_content, image_content, word_count, file_message = extract_content_from_pdf(file_path, do_read_image,
+                                                                                         tesseract_path)
     elif file_path.endswith(".docx"):
         text_content, image_content, word_count, file_message = extract_content_from_docx(file_path, do_read_image)
     elif file_path.endswith(".doc"):
@@ -47,11 +72,6 @@ def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
 
     # Store extracted text in Chroma database
     if text_content:
-        chroma_db = Chroma(
-            client=chroma_client,
-            collection_name="documents",
-            embedding_function=FastEmbedEmbeddings()
-        )
         # Prepare texts and metadatas uniformly
         if isinstance(text_content, list) and all(isinstance(page, dict) for page in text_content):
             # PPT/PPTX case with page numbers
@@ -77,6 +97,7 @@ def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
                 else:
                     # Fallback: use the last page if no match (should rarely happen)
                     chunk_metadatas.append({"filename": filename, "page": metadatas[-1]["page"]})
+            logger.info(f"Adding {len(chunks)} chunks for {filename} to Chroma")
             chroma_db.add_texts(texts=chunks, metadatas=chunk_metadatas)
 
     return text_content, image_content, word_count, file_message

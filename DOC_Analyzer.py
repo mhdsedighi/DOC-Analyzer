@@ -219,7 +219,7 @@ def read_documents(folder_path):
             if file_message:
                 cursor.insertText(f"Alert: {file_message}\n", system_format)  # Add reading info
             if do_read_image:
-                cursor.insertText(f"Extracted images: {len(image_content) if image_content != "no image" else 0}\n", system_format)  # Use system_format
+                cursor.insertText(f"Extracted images: {len(image_content) if image_content != 'no image' else 0}\n", system_format)  # Use system_format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
 

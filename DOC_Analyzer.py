@@ -10,7 +10,9 @@ import ollama, enchant, sys, os, json, re, string, time, math, psutil, pynvml
 from modules.file_read import extract_content_from_file
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
-
+from langchain_chroma import Chroma
+from langchain_community.embeddings import FastEmbedEmbeddings
+import chromadb
 
 # Define the cache folder and ensure it exists
 if not os.path.exists("cache"):
@@ -34,6 +36,7 @@ ai_format = QTextCharFormat()
 
 system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray
+
 
 class OllamaWorkerThread(QThread):
     response_received = pyqtSignal(str)
@@ -73,17 +76,19 @@ def load_document_cache():
             return json.load(file)
     return {}
 
+
 # Save the document cache
 def save_document_cache(cache):
     with open(DOCUMENT_CACHE_FILE, "w", encoding="utf-8") as file:
         json.dump(cache, file, indent=4, ensure_ascii=False)
+
 
 # Function to fetch installed Ollama models
 def fetch_installed_models():
     try:
         models_response = ollama.list()  # Fetch the list of installed models
         # print("DEBUG: Response from ollama.list():", models_response)  # Debugging output
-        
+
         models_list = models_response.models  # Access the 'models' attribute directly
 
         if not isinstance(models_list, list):
@@ -101,11 +106,28 @@ def fetch_installed_models():
 
 # Function to handle folder browsing
 def browse_folder():
-    folder_path = QFileDialog.getExistingDirectory(window, "Select folder with any number of PDF, DOCX, TXT ,PPT, ... files")
+    folder_path = QFileDialog.getExistingDirectory(window,
+                                                   "Select folder with any number of PDF, DOCX, TXT ,PPT, ... files")
     if folder_path:
         address_menu.set_current_address(folder_path)  # Set the selected folder
         address_menu.add_address(folder_path)  # Add to the list if not already present
         save_user_data(last_folder=folder_path)  # Save the last folder
+
+
+# Initialize Chroma client for document retrieval
+chroma_client = chromadb.PersistentClient(
+    settings=chromadb.Settings(
+        is_persistent=True,
+        persist_directory=os.path.join("cache", "chroma_db_docs"),
+        allow_reset=True
+    )
+)
+chroma_db = Chroma(
+    client=chroma_client,
+    collection_name="documents",
+    embedding_function=FastEmbedEmbeddings()
+)
+
 
 # Function to read all documents in a folder
 def read_documents(folder_path):
@@ -116,38 +138,9 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state. 4 Scenarios
     if not do_send_images:
-        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
-        {
-            "filename": "document_name",
-            "pages": [
-                {
-                    "page_number": 1,
-                    "content": "text content of the page",
-                    "images": []  # No images are included
-                },
-                ...
-            ]
-        }
-        Provide insights, summaries, or answers based on this textual content."""
+        all_text = """You are analyzing extracted text from multiple documents stored in a Chroma vector database. Provide insights, summaries, or answers based on the retrieved textual content."""
     else:
-        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
-        {
-            "filename": "document_name",
-            "pages": [
-                {
-                    "page_number": 1,
-                    "content": "text content of the page. It may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.",
-                    "images": [
-                        "base64_encoded_image_1",
-                        "base64_encoded_image_2",
-                        ...
-                    ]  # Images are included as base64 strings
-                },
-                ...
-            ]
-        }
-        The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which correspond to the images provided in the 'images' field of the JSON object.
-        Consider both text and these visual elements when generating insights, summaries, or answers."""
+        all_text = """You are analyzing extracted text and images from multiple documents stored in a Chroma vector database. The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., corresponding to images provided separately as base64 strings. Consider both text and these visual elements when generating insights, summaries, or answers."""
 
     if do_mention_page_var.isChecked():
         all_text += """ When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
@@ -172,7 +165,9 @@ def read_documents(folder_path):
                 else:
                     # Re-extract if images were not previously stored and do_read_image is True
                     if do_read_image and not image_content:  # and not file_ext=="txt"
-                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
+                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path,
+                                                                                                          do_read_image,
+                                                                                                          tesseract_path)
 
                         # Update the cache with new images or 'no image'
                         cache[file_path]["image_content"] = image_content if image_content else "no image"
@@ -181,7 +176,9 @@ def read_documents(folder_path):
                         new_files_read += 1  # Increment new file count if reprocessed
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
+                text_content, image_content, word_count, file_message = extract_content_from_file(file_path,
+                                                                                                  do_read_image,
+                                                                                                  tesseract_path)
 
                 if do_read_image and not image_content:
                     image_content = "no image"
@@ -196,20 +193,20 @@ def read_documents(folder_path):
                 save_document_cache(cache)
                 new_files_read += 1  # Increment counter for new files
 
-            # Structure the document content as a JSON object (without word_count and file_message)
+            # Structure the document content as a JSON object for cache (not for Chroma)
             document_json = {
                 "filename": filename,
                 "pages": [
                     {
                         "page_number": i + 1,
-                        "content": page_content,
+                        "content": page_content["content"] if isinstance(page_content, dict) else page_content,
                         "images": image_content if do_send_images and image_content != "no image" else []
                     }
                     for i, page_content in enumerate(text_content)
                 ]
             }
 
-            # Append the JSON object to the document_text list
+            # Append the JSON object to the document_text list (for cache/UI display)
             document_text.append(document_json)
 
             cursor = chat_history.textCursor()
@@ -225,9 +222,12 @@ def read_documents(folder_path):
 
             # Add images to document_images list if model supports images
             if do_send_images and image_content != "no image":
-                document_images.extend(image_content)
+                document_images.extend(
+                    image_content if not isinstance(image_content[0], dict) else [img["content"] for img in
+                                                                                  image_content])
     enable_ai_interaction()
     return all_text, new_files_read, document_images
+
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -254,11 +254,17 @@ def chat_with_ai():
         # Add the user's message to the chat history list
         chat_history_list.append({"role": "user", "content": user_input})
 
-        # Combine the document text with the chat history
-        full_prompt = {
-            "documents": document_text,
-            "chat_history": chat_history_list
-        }
+        # Retrieve relevant document chunks from Chroma
+        retriever = chroma_db.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"k": 5, "score_threshold": 0.3}
+        )
+        retrieved_docs = retriever.invoke(user_input)
+        document_context = "\n".join(
+            [f"{doc.metadata['filename']} (Page {doc.metadata['page']}): {doc.page_content}" for doc in retrieved_docs])
+
+        # Combine the chat history and document context
+        full_prompt = f"Chat History:\n{json.dumps(chat_history_list, indent=2)}\n\nDocument Context:\n{document_context}"
 
         try:
             # Start tracking elapsed time
@@ -269,8 +275,9 @@ def chat_with_ai():
 
             # Send the prompt to the AI using the selected model
             selected_model = model_var.currentText()
-            messages = [{"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
-            messages.append({"role": "user", "content": json.dumps(full_prompt)})
+            messages = [
+                {"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
+            messages.append({"role": "user", "content": full_prompt})
 
             # If the model supports images, include them in the messages
             if do_send_images:
@@ -286,7 +293,8 @@ def chat_with_ai():
 
             # Create and start the worker thread
             global ollama_worker
-            ollama_worker = OllamaWorkerThread(selected_model, messages, {"temperature": temperature_scale.value() / 100.0})
+            ollama_worker = OllamaWorkerThread(selected_model, messages,
+                                               {"temperature": temperature_scale.value() / 100.0})
             ollama_worker.response_received.connect(handle_ai_response)
             ollama_worker.error_occurred.connect(handle_ai_error)
             ollama_worker.process_killed.connect(reset_ask_ai_button)
@@ -304,6 +312,7 @@ def chat_with_ai():
             do_mention_page=do_mention_page,
             do_read_image=do_read_image
         )
+
 
 # Function to handle AI response
 def handle_ai_response(response):
@@ -334,6 +343,7 @@ def handle_ai_response(response):
     # Revert the typehere_label to its initial text and style
     typehere_label.setText(INITIAL_TYPEHERE_TEXT)
     typehere_label.setStyleSheet(INITIAL_TYPEHERE_STYLE)
+
 
 # Function to handle AI errors
 def handle_ai_error(error_message):
@@ -375,6 +385,7 @@ def reset_ask_ai_button():
     typehere_label.setText("Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
     typehere_label.setStyleSheet("color: green;")
 
+
 def update_waiting_label():
     # Set the initial "Waiting..." text and style
     typehere_label.setText("Waiting...")
@@ -387,6 +398,7 @@ def update_waiting_label():
         metrics_timer.timeout.connect(update_waiting_label_metrics)  # Use a separate function for metrics updates
         metrics_timer.start(500)  # Update every 500ms
         update_waiting_label.timer_started = True  # Mark the timer as started
+
 
 def update_waiting_label_metrics():
     # Calculate elapsed time
@@ -407,6 +419,7 @@ def update_waiting_label_metrics():
     typehere_label.setText(
         f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
     )
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -471,7 +484,7 @@ class SettingsDialog(QDialog):
         user_data = load_user_data()
         user_data["tesseract_folder"] = self.tesseract_path_edit.text()  # Get from the edit box
         save_user_data(**user_data)
-        tesseract_folder = self.tesseract_path_edit.text() # Update the global variable
+        tesseract_folder = self.tesseract_path_edit.text()  # Update the global variable
         tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
         event.accept()
 
@@ -484,15 +497,18 @@ class SettingsDialog(QDialog):
             tesseract_folder = folder  # Update the global variable
             tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
 
+
 def open_options():
     settings_dialog = SettingsDialog(window)
     result = settings_dialog.exec()  # Use exec() and store the result
 
     if result == QDialog.DialogCode.Accepted:  # Check if the user clicked "OK" or closed the dialog with "X"
         global tesseract_folder, tesseract_path  # Declare globals in the function
-        user_data = load_user_data() # Reload user data
-        tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Get from cache or default
-        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe") # Update tesseract_path
+        user_data = load_user_data()  # Reload user data
+        tesseract_folder = user_data.get("tesseract_folder",
+                                         r"C:\Program Files\Tesseract-OCR")  # Get from cache or default
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update tesseract_path
+
 
 def get_system_metrics():
     # Get CPU utilization
@@ -510,6 +526,7 @@ def get_system_metrics():
         pass  # GPU not available or error occurred
 
     return cpu_usage, gpu_usage
+
 
 # Function to kill the Ollama process
 def kill_ollama_process():
@@ -531,6 +548,7 @@ def kill_ollama_process():
         if hasattr(update_waiting_label, "timer_started"):
             metrics_timer.stop()
             delattr(update_waiting_label, "timer_started")  # Reset the timer flag
+
 
 # Function to clear the chat history box
 def clear_chat_history():
@@ -561,7 +579,8 @@ def set_folder_path():
     document_text_intro, new_files_read, document_images = read_documents(folder_path)
     cursor = chat_history.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
-    cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n", other_system_format)
+    cursor.insertText(f"Documents reading finished. {new_files_read} items were new for the library.\n",
+                      other_system_format)
     cursor.insertText("You can now chat with the A.I. \n", other_system_format)
     chat_history.setTextCursor(cursor)  # Update the cursor position
     chat_history.ensureCursorVisible()  # Scroll to the bottom
@@ -569,6 +588,7 @@ def set_folder_path():
     # Save the folder path, last used model, and temperature
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
     enable_ai_interaction()
+
 
 class SpellCheckTextEdit(QTextEdit):
     def __init__(self):
@@ -600,6 +620,7 @@ class SpellCheckTextEdit(QTextEdit):
     def replace_word(self, cursor, new_word):
         cursor.insertText(new_word)
 
+
 class SpellCheckHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
         super().__init__(parent)
@@ -617,7 +638,7 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
                 start = text.index(word)
                 self.setFormat(start, len(word), self.error_format)
 
-    def is_valid_word(self, word): # Ensure the word contains only English letters (A-Z, a-z)
+    def is_valid_word(self, word):  # Ensure the word contains only English letters (A-Z, a-z)
         if not all(char in string.ascii_letters for char in word):
             return True  # Ignore words with non-English characters (consider them valid)
         return self.spell_checker.check(word)
@@ -671,11 +692,11 @@ def update_model_description():
 
 def on_toggle(var_name):
     """Update global variables dynamically based on checkbox state."""
-    globals()[var_name] = globals()[f"{var_name}_var"].isChecked() # Access the QCheckBox variable
+    globals()[var_name] = globals()[f"{var_name}_var"].isChecked()  # Access the QCheckBox variable
     # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
 
-# -------------------------------------------------
 
+# -------------------------------------------------
 
 
 previous_message = ""
@@ -716,7 +737,6 @@ main_layout.addLayout(top_layout)
 # Fetch installed Ollama models
 installed_models = fetch_installed_models()
 
-
 read_button_timer = QTimer()
 read_button_timer.timeout.connect(lambda: animate_button(read_button))
 
@@ -733,10 +753,10 @@ tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
 # Dropdown for model selection
 model_var = QComboBox()
 model_var.addItems(installed_models)
-model_var.setCurrentText(last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
+model_var.setCurrentText(
+    last_model if last_model in installed_models else (installed_models[0] if installed_models else "No models found"))
 
 model_var.currentIndexChanged.connect(update_model_description)
-
 
 # Adding the custom AddressMenu
 address_menu = AddressMenu()
@@ -750,7 +770,7 @@ top_layout.addWidget(browse_button)
 # Read button
 read_button = QPushButton("Read Documents")
 read_button.clicked.connect(set_folder_path)
-#read_button.clicked.connect(lambda: (read_button.setText("Reading..."),set_folder_path()))
+# read_button.clicked.connect(lambda: (read_button.setText("Reading..."),set_folder_path()))
 top_layout.addWidget(read_button)
 
 # Chat history display
@@ -811,11 +831,13 @@ copy_button.clicked.connect(copy_to_clipboard)
 temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
 
+
 # Function to update the temperature label and save the value
 def update_temperature_label(value):
     temperature_value = value / 10.0  # Convert slider value to 0.1 increments
     temperature_display_label.setText(f"{temperature_value:.1f}")
     save_user_data(temperature=temperature_value)  # Save the temperature value to cache
+
 
 def disable_ai_interaction():
     """Disables AI interaction elements (Ask AI button and user input box)."""
@@ -825,6 +847,7 @@ def disable_ai_interaction():
     """Starts the blinking animation on the Read Documents button."""
     read_button_timer.start(500)
 
+
 def enable_ai_interaction():
     """Enables AI interaction elements."""
     read_button.setText("Read Documents")
@@ -833,13 +856,15 @@ def enable_ai_interaction():
     user_input_box.setPlaceholderText("")  # Remove placeholder text
     """Stops the blinking animation on the Read Documents button."""
     read_button_timer.stop()
-    read_button.setStyleSheet("") # Reset style
+    read_button.setStyleSheet("")  # Reset style
     read_button.setText("Read Documents")
 
+
 def animate_button(button):
-    alpha = int((1 +  math.sin(time.time() * 2)) * 127.5)  # Sinusoidal alpha
-    color = QColor(255, 255, 255, alpha) # White with varying alpha
+    alpha = int((1 + math.sin(time.time() * 2)) * 127.5)  # Sinusoidal alpha
+    color = QColor(255, 255, 255, alpha)  # White with varying alpha
     button.setStyleSheet(f"background-color: rgba({color.red()},{color.green()},{color.blue()},{color.alpha()});")
+
 
 # Label to display the current temperature value
 temperature_display_label = QLabel(f"{last_temperature:.1f}")
@@ -882,8 +907,8 @@ model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)
 
-#spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-#top_layout.addItem(spacer)
+# spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+# top_layout.addItem(spacer)
 top_layout.addWidget(options_button)
 
 update_model_description()
@@ -902,13 +927,12 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 
 # Set window size and position (optional - adjust as needed)
 window.setGeometry(100, 100, 800, 600)  # Example size
-disable_ai_interaction() # for initial app start
+disable_ai_interaction()  # for initial app start
 
-custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
+custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(
+    os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
 chat_history.setFont(custom_font)
 user_input_box.setFont(custom_font)
-
-
 
 window.show()
 window.setWindowTitle("A.I. Document Analyzer")

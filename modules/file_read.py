@@ -6,29 +6,80 @@ import win32com.client
 from io import BytesIO
 import base64
 from modules.pdf_tools import extract_content_from_pdf
+from langchain_chroma import Chroma
+from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+import chromadb
 
+# Initialize Chroma client and text splitter
+client_settings = chromadb.Settings(
+    is_persistent=True,
+    persist_directory=os.path.join("cache", "chroma_db_docs"),
+    allow_reset=True
+)
+chroma_client = chromadb.PersistentClient(settings=client_settings)
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=60)
 
-# Function to extract text from a document based on its file type
-def extract_content_from_file(file_path,do_read_image,tesseract_path=None):
+# Function to extract text from a document based on its file type and store in Chroma
+def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
+    filename = os.path.basename(file_path)
+    file_ext = os.path.splitext(filename)[1].lower()
+
+    # Extract content based on file type
     if file_path.endswith(".pdf"):
-        return extract_content_from_pdf(file_path,do_read_image,tesseract_path)
+        text_content, image_content, word_count, file_message = extract_content_from_pdf(file_path, do_read_image, tesseract_path)
     elif file_path.endswith(".docx"):
-        return extract_content_from_docx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_docx(file_path, do_read_image)
     elif file_path.endswith(".doc"):
-        return extract_content_from_doc(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_doc(file_path, do_read_image)
     elif file_path.endswith(".txt"):
-        return extract_content_from_txt(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_txt(file_path, do_read_image)
     elif file_path.endswith(".xlsx"):
-        return extract_content_from_xlsx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_xlsx(file_path, do_read_image)
     elif file_path.endswith(".xls"):
-        return extract_content_from_xls(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_xls(file_path, do_read_image)
     elif file_path.endswith(".pptx"):
-        return extract_content_from_pptx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_pptx(file_path, do_read_image)
     elif file_path.endswith(".ppt"):
-        return extract_content_from_ppt(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_ppt(file_path, do_read_image)
     else:
-        return [],[], 0,"Unsupported File"  # Unsupported file type
-        
+        return [], [], 0, "Unsupported File"  # Unsupported file type
+
+    # Store extracted text in Chroma database
+    if text_content:
+        chroma_db = Chroma(
+            client=chroma_client,
+            collection_name="documents",
+            embedding_function=FastEmbedEmbeddings()
+        )
+        # Prepare texts and metadatas uniformly
+        if isinstance(text_content, list) and all(isinstance(page, dict) for page in text_content):
+            # PPT/PPTX case with page numbers
+            texts = [page["content"] for page in text_content]
+            metadatas = [{"filename": filename, "page": page["page"], "content": page["content"]} for page in text_content]
+        else:
+            # Other file types with single text or list of strings
+            texts = text_content if isinstance(text_content, list) else [text_content]
+            metadatas = [{"filename": filename, "page": i + 1, "content": text} for i, text in enumerate(texts)]
+
+        # Split text into chunks and add to Chroma
+        full_text = "\n".join(texts)
+        chunks = text_splitter.split_text(full_text)
+        if chunks:
+            # Create metadata for each chunk, repeating base metadata and associating with original page
+            chunk_metadatas = []
+            for chunk in chunks:
+                # Find the page that this chunk most likely belongs to by checking overlap
+                for meta in metadatas:
+                    if chunk in meta["content"]:
+                        chunk_metadatas.append({"filename": filename, "page": meta["page"]})
+                        break
+                else:
+                    # Fallback: use the last page if no match (should rarely happen)
+                    chunk_metadatas.append({"filename": filename, "page": metadatas[-1]["page"]})
+            chroma_db.add_texts(texts=chunks, metadatas=chunk_metadatas)
+
+    return text_content, image_content, word_count, file_message
 
 # Function to extract text from a DOCX file
 def extract_content_from_docx(docx_path,do_read_image):

@@ -29,10 +29,6 @@ jobs:
           conda activate da-env
           pip install pyinstaller
 
-      - name: Uninstall incompatible pathlib package
-        run: |
-          python -m pip uninstall -y pathlib
-
       - name: Build EXE
         run: |
           pyinstaller --onefile --windowed --clean --name DocAnalyzer --add-data "modules;modules" --add-data "modules/Sahel.ttf;modules" DOC_Analyzer.py

@@ -10,6 +10,7 @@ from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores.utils import filter_complex_metadata
+from langchain_core.documents import Document
 import chromadb
 import logging
 
@@ -112,11 +113,11 @@ def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
         full_text = "\n".join(texts)
         chunks = text_splitter.split_text(full_text)
         if chunks:
-            # Filter complex metadata
-            chunk_docs = [dict(page_content=chunk, metadata=meta) for chunk, meta in zip(chunks, [metadatas[i % len(metadatas)] for i in range(len(chunks))])]
-            filtered_chunks = filter_complex_metadata([doc for doc in chunk_docs])
-            filtered_texts = [doc["page_content"] for doc in filtered_chunks]
-            filtered_metadatas = [doc["metadata"] for doc in filtered_chunks]
+            # Create Document objects instead of dictionaries
+            chunk_docs = [Document(page_content=chunk, metadata=metadatas[i % len(metadatas)]) for i, chunk in enumerate(chunks)]
+            filtered_chunks = filter_complex_metadata(chunk_docs)
+            filtered_texts = [doc.page_content for doc in filtered_chunks]
+            filtered_metadatas = [doc.metadata for doc in filtered_chunks]
 
             # Log extracted metadata for debugging
             for meta in filtered_metadatas:

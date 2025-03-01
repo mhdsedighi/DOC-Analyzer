@@ -41,6 +41,7 @@ dependencies:
       - colorama==0.4.6
       - coloredlogs==15.0.1
       - dataclasses-json==0.6.7
+      - ddgr==2.2
       - deprecated==1.2.18
       - distro==1.9.0
       - durationpy==0.9
@@ -74,6 +75,7 @@ dependencies:
       - langchain-chroma==0.2.2
       - langchain-community==0.3.18
       - langchain-core==0.3.40
+      - langchain-ollama==0.2.3
       - langchain-text-splitters==0.3.6
       - langid==1.1.6
       - langsmith==0.3.11

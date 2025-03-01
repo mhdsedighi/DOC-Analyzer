@@ -12,8 +12,16 @@ from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
 from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_ollama import ChatOllama
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+from langchain.prompts import PromptTemplate
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.memory import BaseMemory
 import chromadb
 import logging
+import subprocess
+from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +33,9 @@ if not os.path.exists("cache"):
 CHROMA_DIR = os.path.join("cache", "chroma_db_docs")
 if not os.path.exists(CHROMA_DIR):
     os.makedirs(CHROMA_DIR)
+CHROMA_MEM_DIR = os.path.join("cache", "chroma_db_mem")  # New memory database
+if not os.path.exists(CHROMA_MEM_DIR):
+    os.makedirs(CHROMA_MEM_DIR)
 
 # File paths for saving user data and cache
 USER_DATA_FILE = os.path.join("cache", "user_data.json")
@@ -46,31 +57,156 @@ system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray
 
 
+# Custom memory class inspired by second codebase
+class CustomChatMemory(BaseMemory):
+    chat_memory: InMemoryChatMessageHistory = InMemoryChatMessageHistory()
+    ai_prefix: str = "AI"
+
+    def __init__(self, chat_memory=None, ai_prefix="AI"):
+        super().__init__()
+        self.chat_memory = chat_memory or InMemoryChatMessageHistory()
+        self.ai_prefix = ai_prefix
+
+    def load_memory_variables(self, inputs):
+        messages = self.chat_memory.messages
+        return {"context": "\n".join([msg.content for msg in messages])}
+
+    def save_context(self, inputs, outputs):
+        input_str = inputs.get("input", "")
+        output_str = outputs.get("output", "")
+        if input_str:
+            self.chat_memory.add_user_message(input_str)
+        if output_str:
+            self.chat_memory.add_ai_message(output_str)
+
+    def clear(self):
+        self.chat_memory.clear()
+
+    @property
+    def memory_variables(self):
+        return ["context"]
+
+
 class OllamaWorkerThread(QThread):
     response_received = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
     process_killed = pyqtSignal()  # Signal when the process is killed
 
-    def __init__(self, model, messages, options):
+    def __init__(self, model, messages, options, chain, memory, retriever_docs, retriever_mem, document_images, do_send_images):
         super().__init__()
         self.model = model
         self.messages = messages
         self.options = options
+        self.chain = chain
+        self.memory = memory
+        self.retriever_docs = retriever_docs
+        self.retriever_mem = retriever_mem
+        self.document_images = document_images
+        self.do_send_images = do_send_images
         self.is_running = True  # Flag to control the loop
+
+    def orchestrate_retrievers(self, query: str):
+        # Fetch memory context with date relevance
+        mem_result = (
+                self.retriever_mem
+                | self.add_date_to_page_content
+                | self.filter_by_date_relevance
+        ).invoke(query)
+
+        # Fetch document context
+        doc_result = self.retriever_docs.invoke(query)
+
+        # Combine results
+        result = mem_result + doc_result
+
+        # Log final retrieval
+        for d in result:
+            logger.info(
+                f"Retrieved: Title: {d.metadata.get('filename', 'N/A')}, Author: {d.metadata.get('author', 'N/A')}, Content: {d.page_content}")
+
+        return "\n".join([d.page_content for d in result])
+
+    def add_date_to_page_content(self, docs):
+        for d in docs:
+            timestamp = d.metadata.get("timestamp", datetime.today().strftime('%Y-%m-%d'))
+            days_ago = (datetime.today() - datetime.strptime(timestamp, '%Y-%m-%d')).days
+            time_ago = f"{days_ago} days ago" if days_ago > 0 else "Today"
+            d.page_content = f"[{time_ago}] {d.page_content}"
+        return docs
+
+    def filter_by_date_relevance(self, docs, max_len=3, recent_amt=2, older_amt=1):
+        if len(docs) <= max_len:
+            return docs
+        updated_docs = []
+        docs_tuples = [
+            (datetime.strptime(d.metadata.get("timestamp", datetime.today().strftime('%Y-%m-%d')), '%Y-%m-%d'), d) for d
+            in docs]
+        docs_tuples_sorted = sorted(docs_tuples, key=lambda dtup: dtup[0], reverse=True)
+        for i in range(min(recent_amt, len(docs_tuples_sorted))):
+            updated_docs.append(docs_tuples_sorted[i][1])
+        docs_tuples_sorted = docs_tuples_sorted[recent_amt:]
+        from random import randrange
+        for i in range(min(older_amt, len(docs_tuples_sorted))):
+            rnd_index = randrange(len(docs_tuples_sorted))
+            updated_docs.append(docs_tuples_sorted[rnd_index][1])
+            del docs_tuples_sorted[rnd_index]
+        return updated_docs
 
     def run(self):
         try:
-            response = ollama.chat(
-                model=self.model,
-                messages=self.messages,
-                options=self.options
+            # Build LangChain pipeline within the thread
+            prompt = PromptTemplate(
+                input_variables=["context", "input"],
+                template="""You are an AI assistant analyzing documents and conversation history.
+                Provide detailed responses based on the context. If unsure, say 'I don’t know'.
+                Context: {context}
+                User: {input}
+                AI:"""
             )
+            chain = (
+                    {
+                        "context": lambda x: self.orchestrate_retrievers(x),
+                        "input": RunnablePassthrough()
+                    }
+                    | prompt
+                    | ChatOllama(model=self.model, temperature=self.options["temperature"])
+                    | StrOutputParser()
+            )
+
+            # Prepare full input
+            full_input = json.dumps(self.messages, indent=2)
+            response = chain.invoke(full_input)
+
+            # Optional web search if response is uncertain
+            if len(response) < 200 and "don’t know" in response.lower() and WEB_SEARCH_ENABLED:
+                search_context = self.get_web_search(full_input)
+                response = chain.invoke(f"{full_input}\nWeb Search Context: {search_context}")
+
             if self.is_running:
-                ai_response = response['message']['content']
-                self.response_received.emit(ai_response)
+                self.response_received.emit(response)
+
+                # Save to memory
+                self.memory.save_context({"input": full_input}, {"output": response})
+                summary = chain.invoke(f"Summarize in 10 words or less: '{full_input}'")
+                chroma_db_mem.add_texts(
+                    texts=[summary],
+                    metadatas=[{"timestamp": datetime.today().strftime('%Y-%m-%d')}]
+                )
         except Exception as e:
-            if self.is_running:  # Check before emitting the error signal
+            if self.is_running:
                 self.error_occurred.emit(str(e))
+
+    def get_web_search(self, query, result_count=3):
+        try:
+            search_query = re.sub(r'[^a-zA-Z0-9\s]', '', query)[:50]  # Simplify query
+            search_results = subprocess.check_output(
+                f"ddgr -n {result_count} -r ie-en -C --unsafe --np \"{search_query}\"",
+                shell=True
+            ).decode("utf-8")
+            return f"Web search results:\n{search_results}"
+        except Exception as e:
+            logger.error(f"Web search failed: {e}")
+            return "Web search unavailable."
 
     def stop(self):
         self.is_running = False  # Set the flag to exit the loop
@@ -138,6 +274,21 @@ chroma_db = Chroma(
 )
 logger.info(f"Chroma initialized with persist_directory: {chroma_client._system.settings.persist_directory}")
 set_chroma_db(chroma_db)  # Pass the Chroma instance to file_read.py
+
+# Initialize Chroma client for memory
+chroma_mem_client = chromadb.PersistentClient(
+    path=CHROMA_MEM_DIR,
+    settings=chromadb.Settings(
+        is_persistent=True,
+        persist_directory=CHROMA_MEM_DIR,
+        allow_reset=True
+    )
+)
+chroma_db_mem = Chroma(
+    client=chroma_mem_client,
+    collection_name="mem",
+    embedding_function=FastEmbedEmbeddings()
+)
 
 
 # Function to read all documents in a folder
@@ -275,16 +426,24 @@ def chat_with_ai():
         chat_history_list.append({"role": "user", "content": user_input})
 
         # Retrieve relevant document chunks from Chroma
-        retriever = chroma_db.as_retriever(
+        retriever_docs = chroma_db.as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={"k": 5, "score_threshold": 0.3}
         )
-        retrieved_docs = retriever.invoke(user_input)
-        document_context = "\n".join(
-            [f"{doc.metadata['filename']} (Page {doc.metadata['page']}): {doc.page_content}" for doc in retrieved_docs])
+        retriever_mem = chroma_db_mem.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"k": 2, "score_threshold": 0.2}
+        )
 
         # Combine the chat history and document context
-        full_prompt = f"Chat History:\n{json.dumps(chat_history_list, indent=2)}\n\nDocument Context:\n{document_context}"
+        messages = [
+            {"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
+        messages.append({"role": "user", "content": user_input})
+
+        # If the model supports images, include them in the messages
+        if do_send_images:
+            for img_base64 in document_images:
+                messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
 
         try:
             # Start tracking elapsed time
@@ -293,17 +452,6 @@ def chat_with_ai():
             # Call update_waiting_label to set the initial text and start the timer
             update_waiting_label()
 
-            # Send the prompt to the AI using the selected model
-            selected_model = model_var.currentText()
-            messages = [
-                {"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
-            messages.append({"role": "user", "content": full_prompt})
-
-            # If the model supports images, include them in the messages
-            if do_send_images:
-                for img_base64 in document_images:
-                    messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
-
             # Change the button to "Kill Process"
             send_button.setText("Cancel")
             send_button.setStyleSheet("background-color: red; color: white;")
@@ -311,10 +459,19 @@ def chat_with_ai():
             send_button.clicked.connect(kill_ollama_process)  # Connect to kill function
             user_input_box.setEnabled(False)
 
-            # Create and start the worker thread
+            # Create and start the worker thread with LangChain chain
             global ollama_worker
-            ollama_worker = OllamaWorkerThread(selected_model, messages,
-                                               {"temperature": temperature_scale.value() / 100.0})
+            ollama_worker = OllamaWorkerThread(
+                model_var.currentText(),
+                messages,
+                {"temperature": temperature_scale.value() / 100.0},
+                None,  # Chain built inside thread
+                memory,
+                retriever_docs,
+                retriever_mem,
+                document_images,
+                do_send_images
+            )
             ollama_worker.response_received.connect(handle_ai_response)
             ollama_worker.error_occurred.connect(handle_ai_error)
             ollama_worker.process_killed.connect(reset_ask_ai_button)
@@ -327,7 +484,7 @@ def chat_with_ai():
         # Save the last used model, folder path, temperature, and checkbox state
         save_user_data(
             address_menu.get_current_address().strip(),
-            selected_model,
+            model_var.currentText(),
             temperature_scale.value() / 100.0,
             do_mention_page=do_mention_page,
             do_read_image=do_read_image
@@ -574,6 +731,7 @@ def kill_ollama_process():
 def clear_chat_history():
     chat_history.clear()
     chat_history_list.clear()  # Clear the chat history list
+    memory.clear()  # Clear memory as well
 
 
 # Function to set the folder path
@@ -723,6 +881,8 @@ previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+memory = CustomChatMemory()  # Initialize memory
+WEB_SEARCH_ENABLED = False  # Toggle for web search
 
 # Define the initial text and style for typehere_label
 INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"

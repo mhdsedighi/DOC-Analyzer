@@ -9,6 +9,7 @@ from modules.pdf_tools import extract_content_from_pdf
 from langchain_chroma import Chroma
 from langchain_community.embeddings import FastEmbedEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores.utils import filter_complex_metadata
 import chromadb
 import logging
 
@@ -16,8 +17,10 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Text splitter initialized globally
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=512, chunk_overlap=60)
+# Text splitter initialized globally, configurable chunk sizes
+CHUNK_SIZE = 1024  # Default to larger size from second codebase, can switch to 512
+CHUNK_OVERLAP = 100 if CHUNK_SIZE == 1024 else 60
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
 # Chroma database will be set from the main script
 chroma_db = None
@@ -39,6 +42,27 @@ def is_file_in_chroma(file_path):
     existing_docs = chroma_db.get(where={"filename": filename})
     logger.info(f"Checking if {filename} is in Chroma: {len(existing_docs['documents']) > 0}")
     return len(existing_docs["documents"]) > 0
+
+
+# Function to extract metadata (e.g., author) from a file
+def extract_author(file_path, file_ext, content=None):
+    if file_ext == ".pdf":
+        from pypdf import PdfReader
+        try:
+            reader = PdfReader(file_path)
+            info = reader.metadata
+            return info.get('/Author', "Unknown") if info else "Unknown"
+        except Exception as e:
+            logger.error(f"Error extracting author from PDF {file_path}: {e}")
+            return "Unknown"
+    elif file_ext == ".docx" and content:
+        try:
+            return content.core_properties.author or "Unknown"
+        except Exception as e:
+            logger.error(f"Error extracting author from DOCX {file_path}: {e}")
+            return "Unknown"
+    # Add more file types as needed
+    return "Unknown"
 
 
 # Function to extract text from a document based on its file type and store in Chroma
@@ -76,31 +100,33 @@ def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
         if isinstance(text_content, list) and all(isinstance(page, dict) for page in text_content):
             # PPT/PPTX case with page numbers
             texts = [page["content"] for page in text_content]
-            metadatas = [{"filename": filename, "page": page["page"], "content": page["content"]} for page in text_content]
+            author = extract_author(file_path, file_ext)
+            metadatas = [{"filename": filename, "page": page["page"], "content": page["content"], "author": author} for page in text_content]
         else:
             # Other file types with single text or list of strings
             texts = text_content if isinstance(text_content, list) else [text_content]
-            metadatas = [{"filename": filename, "page": i + 1, "content": text} for i, text in enumerate(texts)]
+            author = extract_author(file_path, file_ext)
+            metadatas = [{"filename": filename, "page": i + 1, "content": text, "author": author} for i, text in enumerate(texts)]
 
-        # Split text into chunks and add to Chroma
+        # Split text into chunks and filter metadata
         full_text = "\n".join(texts)
         chunks = text_splitter.split_text(full_text)
         if chunks:
-            # Create metadata for each chunk, repeating base metadata and associating with original page
-            chunk_metadatas = []
-            for chunk in chunks:
-                # Find the page that this chunk most likely belongs to by checking overlap
-                for meta in metadatas:
-                    if chunk in meta["content"]:
-                        chunk_metadatas.append({"filename": filename, "page": meta["page"]})
-                        break
-                else:
-                    # Fallback: use the last page if no match (should rarely happen)
-                    chunk_metadatas.append({"filename": filename, "page": metadatas[-1]["page"]})
-            logger.info(f"Adding {len(chunks)} chunks for {filename} to Chroma")
-            chroma_db.add_texts(texts=chunks, metadatas=chunk_metadatas)
+            # Filter complex metadata
+            chunk_docs = [dict(page_content=chunk, metadata=meta) for chunk, meta in zip(chunks, [metadatas[i % len(metadatas)] for i in range(len(chunks))])]
+            filtered_chunks = filter_complex_metadata([doc for doc in chunk_docs])
+            filtered_texts = [doc["page_content"] for doc in filtered_chunks]
+            filtered_metadatas = [doc["metadata"] for doc in filtered_chunks]
+
+            # Log extracted metadata for debugging
+            for meta in filtered_metadatas:
+                logger.info(f"Extracted metadata for {filename}: {meta}")
+
+            logger.info(f"Adding {len(filtered_texts)} chunks for {filename} to Chroma")
+            chroma_db.add_texts(texts=filtered_texts, metadatas=filtered_metadatas)
 
     return text_content, image_content, word_count, file_message
+
 
 # Function to extract text from a DOCX file
 def extract_content_from_docx(docx_path,do_read_image):

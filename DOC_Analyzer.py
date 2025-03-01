@@ -22,6 +22,8 @@ import chromadb
 import logging
 import subprocess
 from datetime import datetime
+# import nltk
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -775,6 +777,10 @@ do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
 memory = CustomChatMemory()  # Initialize memory
 WEB_SEARCH_ENABLED = False  # Toggle for web search
+# nltk.download('punkt')
+# nltk.download('punkt_tab')
+# nltk.download('averaged_perceptron_tagger')
+
 
 # Define the initial text and style for typehere_label
 INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"

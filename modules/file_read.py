@@ -2,33 +2,109 @@ import os
 from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
-import win32com.client
+import win32com.client ,tempfile
 from io import BytesIO
 import base64
 from modules.pdf_tools import extract_content_from_pdf
+from langchain_chroma import Chroma
+from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores.utils import filter_complex_metadata
+from langchain_core.documents import Document
+import chromadb
+import logging
+# from nltk import sent_tokenize, word_tokenize, pos_tag
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Text splitter initialized globally, configurable chunk sizes
+CHUNK_SIZE = 1024  # Default to larger size from second codebase, can switch to 512
+CHUNK_OVERLAP = 100 if CHUNK_SIZE == 1024 else 60
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+
+# Chroma database will be set from the main script
+chroma_db = None
 
 
-# Function to extract text from a document based on its file type
-def extract_content_from_file(file_path,do_read_image,tesseract_path=None):
+# Function to set the Chroma database from the main script
+def set_chroma_db(db):
+    global chroma_db
+    chroma_db = db
+    logger.info(
+        f"Chroma DB set in file_read.py with persist_directory: {chroma_db._client._system.settings.persist_directory}")
+
+
+# Function to check if a file is already in Chroma
+def is_file_in_chroma(file_path):
+    if chroma_db is None:
+        raise ValueError("Chroma database not initialized")
+    filename = os.path.basename(file_path)
+    existing_docs = chroma_db.get(where={"filename": filename})
+    logger.info(f"Checking if {filename} is in Chroma: {len(existing_docs['documents']) > 0}")
+    return len(existing_docs["documents"]) > 0
+
+# Function to extract text from a document based on its file type and store in Chroma
+def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
+    if chroma_db is None:
+        raise ValueError("Chroma database not initialized")
+
+    filename = os.path.basename(file_path)
+    file_ext = os.path.splitext(filename)[1].lower()
+
+    # Extract content based on file type
     if file_path.endswith(".pdf"):
-        return extract_content_from_pdf(file_path,do_read_image,tesseract_path)
+        text_content, image_content, word_count, file_message = extract_content_from_pdf(file_path, do_read_image,
+                                                                                         tesseract_path)
     elif file_path.endswith(".docx"):
-        return extract_content_from_docx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_docx(file_path, do_read_image)
     elif file_path.endswith(".doc"):
-        return extract_content_from_doc(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_doc(file_path, do_read_image)
     elif file_path.endswith(".txt"):
-        return extract_content_from_txt(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_txt(file_path, do_read_image)
     elif file_path.endswith(".xlsx"):
-        return extract_content_from_xlsx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_xlsx(file_path, do_read_image)
     elif file_path.endswith(".xls"):
-        return extract_content_from_xls(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_xls(file_path, do_read_image)
     elif file_path.endswith(".pptx"):
-        return extract_content_from_pptx(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_pptx(file_path, do_read_image)
     elif file_path.endswith(".ppt"):
-        return extract_content_from_ppt(file_path,do_read_image)
+        text_content, image_content, word_count, file_message = extract_content_from_ppt(file_path, do_read_image)
     else:
-        return [],[], 0,"Unsupported File"  # Unsupported file type
-        
+        return [], [], 0, "Unsupported File"  # Unsupported file type
+
+    # Store extracted text in Chroma database
+    if text_content:
+        # Prepare texts and metadatas uniformly
+        if isinstance(text_content, list) and all(isinstance(page, dict) for page in text_content):
+            # PPT/PPTX case with page numbers
+            texts = [page["content"] for page in text_content]
+            metadatas = [{"filename": filename, "page": page["page"], "content": page["content"]} for page in text_content]
+        else:
+            # Other file types with single text or list of strings
+            texts = text_content if isinstance(text_content, list) else [text_content]
+            metadatas = [{"filename": filename, "page": i + 1, "content": text} for i, text in enumerate(texts)]
+
+        # Split text into chunks
+        full_text = "\n".join(texts)
+        chunks = text_splitter.split_text(full_text)
+        if chunks:
+            # Update metadata with extracted title and author
+            chunk_docs = [Document(page_content=chunk, metadata=metadatas[i % len(metadatas)]) for i, chunk in enumerate(chunks)]
+            filtered_chunks = filter_complex_metadata(chunk_docs)
+            filtered_texts = [doc.page_content for doc in filtered_chunks]
+            filtered_metadatas = [doc.metadata for doc in filtered_chunks]
+
+            # Log extracted metadata for debugging
+            for meta in filtered_metadatas:
+                logger.info(f"Extracted metadata for {filename}: {meta}")
+
+            logger.info(f"Adding {len(filtered_texts)} chunks for {filename} to Chroma")
+            chroma_db.add_texts(texts=filtered_texts, metadatas=filtered_metadatas)
+
+    return text_content, image_content, word_count, file_message
+
 
 # Function to extract text from a DOCX file
 def extract_content_from_docx(docx_path,do_read_image):

@@ -7,14 +7,33 @@ from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QTextCharFormat, QTextCursor, QSyntaxHighlighter, QColor, QFont, QFontDatabase, QShortcut
 from PyQt6 import QtGui
 import ollama, enchant, sys, os, json, re, string, time, math, psutil, pynvml
-from modules.file_read import extract_content_from_file
+from modules.file_read import extract_content_from_file, is_file_in_chroma, set_chroma_db
 from modules.utils import load_user_data, save_user_data
 from modules.custom_widgets import AddressMenu
+from langchain_chroma import Chroma
+from langchain_community.embeddings import FastEmbedEmbeddings
+from langchain_ollama import ChatOllama
+from langchain.schema.runnable import RunnablePassthrough
+from langchain.schema.output_parser import StrOutputParser
+from langchain.prompts import PromptTemplate
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.memory import BaseMemory
+import chromadb
+import logging
+import subprocess
+from datetime import datetime
 
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Define the cache folder and ensure it exists
-if not os.path.exists("cache"):
-    os.makedirs("cache")
+if not os.path.exists("cache"): os.makedirs("cache")
+CHROMA_DIR = os.path.join("cache", "chroma_db_docs")
+if not os.path.exists(CHROMA_DIR): os.makedirs(CHROMA_DIR)
+CHROMA_MEM_DIR = os.path.join("cache", "chroma_db_mem")  # New memory database
+if not os.path.exists(CHROMA_MEM_DIR): os.makedirs(CHROMA_MEM_DIR)
 
 # File paths for saving user data and cache
 USER_DATA_FILE = os.path.join("cache", "user_data.json")
@@ -35,31 +54,127 @@ ai_format = QTextCharFormat()
 system_format = QTextCharFormat()
 system_format.setForeground(QColor("gray"))  # System messages in gray
 
+
+# Custom memory class inspired by second codebase
+class CustomChatMemory(BaseMemory):
+    chat_memory: InMemoryChatMessageHistory = InMemoryChatMessageHistory()
+    ai_prefix: str = "AI"
+
+    def __init__(self, chat_memory=None, ai_prefix="AI"):
+        super().__init__()
+        self.chat_memory = chat_memory or InMemoryChatMessageHistory()
+        self.ai_prefix = ai_prefix
+
+    def load_memory_variables(self, inputs):
+        messages = self.chat_memory.messages
+        return {"context": "\n".join([msg.content for msg in messages])}
+
+    def save_context(self, inputs, outputs):
+        input_str = inputs.get("input", "")
+        output_str = outputs.get("output", "")
+        if input_str: self.chat_memory.add_user_message(input_str)
+        if output_str: self.chat_memory.add_ai_message(output_str)
+
+    def clear(self):
+        self.chat_memory.clear()
+
+    @property
+    def memory_variables(self):
+        return ["context"]
+
+
 class OllamaWorkerThread(QThread):
     response_received = pyqtSignal(str)
     error_occurred = pyqtSignal(str)
     process_killed = pyqtSignal()  # Signal when the process is killed
 
-    def __init__(self, model, messages, options):
+    def __init__(self, model, messages, options, chain, memory, retriever_docs, retriever_mem, document_images, do_send_images):
         super().__init__()
         self.model = model
         self.messages = messages
         self.options = options
+        self.chain = chain
+        self.memory = memory
+        self.retriever_docs = retriever_docs
+        self.retriever_mem = retriever_mem
+        self.document_images = document_images
+        self.do_send_images = do_send_images
         self.is_running = True  # Flag to control the loop
+
+    def orchestrate_retrievers(self, query: str):
+        # Fetch memory context with date relevance
+        mem_result = (self.retriever_mem | self.add_date_to_page_content | self.filter_by_date_relevance).invoke(query)
+
+        # Fetch document context
+        doc_result = self.retriever_docs.invoke(query)
+
+        # Combine results
+        result = mem_result + doc_result
+
+        # Log final retrieval
+        for d in result: logger.info(f"Retrieved: Title: {d.metadata.get('filename', 'N/A')}, Author: {d.metadata.get('author', 'N/A')}, Content: {d.page_content}")
+
+        return "\n".join([d.page_content for d in result])
+
+    def add_date_to_page_content(self, docs):
+        for d in docs:
+            timestamp = d.metadata.get("timestamp", datetime.today().strftime('%Y-%m-%d'))
+            days_ago = (datetime.today() - datetime.strptime(timestamp, '%Y-%m-%d')).days
+            time_ago = f"{days_ago} days ago" if days_ago > 0 else "Today"
+            d.page_content = f"[{time_ago}] {d.page_content}"
+        return docs
+
+    def filter_by_date_relevance(self, docs, max_len=3, recent_amt=2, older_amt=1):
+        if len(docs) <= max_len:
+            return docs
+        updated_docs = []
+        docs_tuples = [
+            (datetime.strptime(d.metadata.get("timestamp", datetime.today().strftime('%Y-%m-%d')), '%Y-%m-%d'), d) for d
+            in docs]
+        docs_tuples_sorted = sorted(docs_tuples, key=lambda dtup: dtup[0], reverse=True)
+        for i in range(min(recent_amt, len(docs_tuples_sorted))):
+            updated_docs.append(docs_tuples_sorted[i][1])
+        docs_tuples_sorted = docs_tuples_sorted[recent_amt:]
+        from random import randrange
+        for i in range(min(older_amt, len(docs_tuples_sorted))):
+            rnd_index = randrange(len(docs_tuples_sorted))
+            updated_docs.append(docs_tuples_sorted[rnd_index][1])
+            del docs_tuples_sorted[rnd_index]
+        return updated_docs
 
     def run(self):
         try:
-            response = ollama.chat(
-                model=self.model,
-                messages=self.messages,
-                options=self.options
-            )
+            # Build LangChain pipeline within the thread
+            prompt = PromptTemplate(input_variables=["context", "input"], template="""You are an AI assistant analyzing documents and conversation history. Provide detailed responses based on the context. If unsure, say 'I don’t know'. Context: {context} User: {input} AI:""")
+            chain = ({"context": lambda x: self.orchestrate_retrievers(x), "input": RunnablePassthrough()} | prompt | ChatOllama(model=self.model, temperature=self.options["temperature"]) | StrOutputParser())
+
+            # Prepare full input
+            full_input = json.dumps(self.messages, indent=2)
+            response = chain.invoke(full_input)
+
+            # Optional web search if response is uncertain
+            if len(response) < 200 and "don’t know" in response.lower() and WEB_SEARCH_ENABLED:
+                search_context = self.get_web_search(full_input)
+                response = chain.invoke(f"{full_input}\nWeb Search Context: {search_context}")
+
             if self.is_running:
-                ai_response = response['message']['content']
-                self.response_received.emit(ai_response)
+                self.response_received.emit(response)
+
+                # Save to memory
+                self.memory.save_context({"input": full_input}, {"output": response})
+                summary = chain.invoke(f"Summarize in 10 words or less: '{full_input}'")
+                chroma_db_mem.add_texts(texts=[summary], metadatas=[{"timestamp": datetime.today().strftime('%Y-%m-%d')}])
         except Exception as e:
-            if self.is_running:  # Check before emitting the error signal
-                self.error_occurred.emit(str(e))
+            if self.is_running: self.error_occurred.emit(str(e))
+
+    def get_web_search(self, query, result_count=3):
+        try:
+            search_query = re.sub(r'[^a-zA-Z0-9\s]', '', query)[:50]  # Simplify query
+            search_results = subprocess.check_output(f"ddgr -n {result_count} -r ie-en -C --unsafe --np \"{search_query}\"", shell=True).decode("utf-8")
+            return f"Web search results:\n{search_results}"
+        except Exception as e:
+            logger.error(f"Web search failed: {e}")
+            return "Web search unavailable."
 
     def stop(self):
         self.is_running = False  # Set the flag to exit the loop
@@ -73,21 +188,21 @@ def load_document_cache():
             return json.load(file)
     return {}
 
+
 # Save the document cache
 def save_document_cache(cache):
-    with open(DOCUMENT_CACHE_FILE, "w", encoding="utf-8") as file:
-        json.dump(cache, file, indent=4, ensure_ascii=False)
+    with open(DOCUMENT_CACHE_FILE, "w", encoding="utf-8") as file: json.dump(cache, file, indent=4, ensure_ascii=False)
+
 
 # Function to fetch installed Ollama models
 def fetch_installed_models():
     try:
         models_response = ollama.list()  # Fetch the list of installed models
         # print("DEBUG: Response from ollama.list():", models_response)  # Debugging output
-        
+
         models_list = models_response.models  # Access the 'models' attribute directly
 
-        if not isinstance(models_list, list):
-            raise ValueError("Unexpected response format: 'models' key is not a list")
+        if not isinstance(models_list, list): raise ValueError("Unexpected response format: 'models' key is not a list")
 
         # Extract model names
         model_names = [getattr(model, "model", "Unknown") for model in models_list]
@@ -107,6 +222,18 @@ def browse_folder():
         address_menu.add_address(folder_path)  # Add to the list if not already present
         save_user_data(last_folder=folder_path)  # Save the last folder
 
+
+# Initialize Chroma client for document retrieval
+chroma_client = chromadb.PersistentClient(path=CHROMA_DIR, settings=chromadb.Settings(is_persistent=True, persist_directory=CHROMA_DIR, allow_reset=True))
+chroma_db = Chroma(client=chroma_client, collection_name="documents", embedding_function=FastEmbedEmbeddings())
+logger.info(f"Chroma initialized with persist_directory: {chroma_client._system.settings.persist_directory}")
+set_chroma_db(chroma_db)  # Pass the Chroma instance to file_read.py
+
+# Initialize Chroma client for memory
+chroma_mem_client = chromadb.PersistentClient(path=CHROMA_MEM_DIR, settings=chromadb.Settings(is_persistent=True, persist_directory=CHROMA_MEM_DIR, allow_reset=True))
+chroma_db_mem = Chroma(client=chroma_mem_client, collection_name="mem", embedding_function=FastEmbedEmbeddings())
+
+
 # Function to read all documents in a folder
 def read_documents(folder_path):
     global document_text  # this appears to fix adding extra texts when changing folder
@@ -116,38 +243,9 @@ def read_documents(folder_path):
 
     # Set the introductory line based on the checkbox state. 4 Scenarios
     if not do_send_images:
-        all_text = """You are analyzing extracted text from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
-        {
-            "filename": "document_name",
-            "pages": [
-                {
-                    "page_number": 1,
-                    "content": "text content of the page",
-                    "images": []  # No images are included
-                },
-                ...
-            ]
-        }
-        Provide insights, summaries, or answers based on this textual content."""
+        all_text = """You are analyzing extracted text from multiple documents stored in a Chroma vector database. Provide insights, summaries, or answers based on the retrieved textual content."""
     else:
-        all_text = """You are analyzing extracted text, images (including both raster and vector types), and diagrams from multiple documents (PDFs and DOCX files). The content is provided as a JSON object with the following structure:
-        {
-            "filename": "document_name",
-            "pages": [
-                {
-                    "page_number": 1,
-                    "content": "text content of the page. It may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which represent images in the original document.",
-                    "images": [
-                        "base64_encoded_image_1",
-                        "base64_encoded_image_2",
-                        ...
-                    ]  # Images are included as base64 strings
-                },
-                ...
-            ]
-        }
-        The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., which correspond to the images provided in the 'images' field of the JSON object.
-        Consider both text and these visual elements when generating insights, summaries, or answers."""
+        all_text = """You are analyzing extracted text and images from multiple documents stored in a Chroma vector database. The text may contain placeholders like [IMAGE_1], [IMAGE_2], etc., corresponding to images provided separately as base64 strings. Consider both text and these visual elements when generating insights, summaries, or answers."""
 
     if do_mention_page_var.isChecked():
         all_text += """ When providing insights, summaries, or answers, reference the file name and page number where the information was found."""
@@ -159,8 +257,17 @@ def read_documents(folder_path):
         if file_ext in SUPPORTED_EXTENSIONS:
             last_modified = os.path.getmtime(file_path)
 
-            # Check if file is in cache and hasn't been modified
-            if file_path in cache and cache[file_path]["last_modified"] == last_modified:
+            # Check if file needs to be re-read (not in Chroma or modified)
+            needs_reread = False
+            if not is_file_in_chroma(file_path):
+                needs_reread = True
+            elif file_path in cache and cache[file_path]["last_modified"] != last_modified:
+                needs_reread = True
+                # Remove old entries from Chroma if modified
+                logger.info(f"Deleting old Chroma entries for {filename}")
+                chroma_db.delete(where={"filename": filename})
+
+            if file_path in cache and not needs_reread:
                 cached_data = cache[file_path]
                 text_content = cached_data["text_content"]
                 word_count = cached_data["word_count"]
@@ -171,8 +278,8 @@ def read_documents(folder_path):
                     pass
                 else:
                     # Re-extract if images were not previously stored and do_read_image is True
-                    if do_read_image and not image_content:  # and not file_ext=="txt"
-                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
+                    if do_read_image and not image_content: # and not file_ext=="txt"
+                        text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image, tesseract_path)
 
                         # Update the cache with new images or 'no image'
                         cache[file_path]["image_content"] = image_content if image_content else "no image"
@@ -181,53 +288,34 @@ def read_documents(folder_path):
                         new_files_read += 1  # Increment new file count if reprocessed
             else:
                 # Extract text and images, then update the cache
-                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image,tesseract_path)
+                text_content, image_content, word_count, file_message = extract_content_from_file(file_path, do_read_image, tesseract_path)
 
-                if do_read_image and not image_content:
-                    image_content = "no image"
+                if do_read_image and not image_content: image_content = "no image"
 
-                cache[file_path] = {
-                    "last_modified": last_modified,
-                    "text_content": text_content,
-                    "word_count": word_count,
-                    "image_content": image_content,  # Cache images or 'no image'
-                    "file_message": file_message,  # Cache reading info
-                }
+                cache[file_path] = {"last_modified": last_modified, "text_content": text_content, "word_count": word_count, "image_content": image_content, "file_message": file_message}
                 save_document_cache(cache)
                 new_files_read += 1  # Increment counter for new files
 
-            # Structure the document content as a JSON object (without word_count and file_message)
-            document_json = {
-                "filename": filename,
-                "pages": [
-                    {
-                        "page_number": i + 1,
-                        "content": page_content,
-                        "images": image_content if do_send_images and image_content != "no image" else []
-                    }
-                    for i, page_content in enumerate(text_content)
-                ]
-            }
+            # Structure the document content as a JSON object for cache (not for Chroma)
+            document_json = {"filename": filename, "pages": [{"page_number": i + 1, "content": page_content["content"] if isinstance(page_content, dict) else page_content, "images": image_content if do_send_images and image_content != "no image" else []} for i, page_content in enumerate(text_content)]}
 
-            # Append the JSON object to the document_text list
+            # Append the JSON object to the document_text list (for cache/UI display)
             document_text.append(document_json)
 
             cursor = chat_history.textCursor()
             cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
             cursor.insertText(f"✔ Looked at: {filename}\n", system_format)  # Use system_format
             cursor.insertText(f"Word count: {word_count}\n", system_format)  # Use system_format
-            if file_message:
-                cursor.insertText(f"Alert: {file_message}\n", system_format)  # Add reading info
-            if do_read_image:
-                cursor.insertText(f"Extracted images: {len(image_content) if image_content != "no image" else 0}\n", system_format)  # Use system_format
+            if file_message: cursor.insertText(f"Alert: {file_message}\n", system_format)  # Add reading info
+            if do_read_image: cursor.insertText(f"Extracted images: {len(image_content) if image_content != 'no image' else 0}\n", system_format)  # Use system_format
             chat_history.setTextCursor(cursor)  # Update the cursor position
             chat_history.ensureCursorVisible()  # Scroll to the bottom
 
             # Add images to document_images list if model supports images
-            if do_send_images and image_content != "no image":
-                document_images.extend(image_content)
+            if do_send_images and image_content != "no image": document_images.extend(image_content if not isinstance(image_content[0], dict) else [img["content"] for img in image_content])
     enable_ai_interaction()
     return all_text, new_files_read, document_images
+
 
 # Function to handle the chat with the AI
 def chat_with_ai():
@@ -236,10 +324,8 @@ def chat_with_ai():
     global do_revise
     previous_message = user_input
 
-    if do_revise:  # Removing what has been revised from prompt
-        if chat_history_list:
-            chat_history_list.pop()
-            chat_history_list.pop()
+    if do_revise: # Removing what has been revised from prompt
+        if chat_history_list: chat_history_list.pop();chat_history_list.pop()
         do_revise = False
 
     if user_input:
@@ -254,11 +340,17 @@ def chat_with_ai():
         # Add the user's message to the chat history list
         chat_history_list.append({"role": "user", "content": user_input})
 
-        # Combine the document text with the chat history
-        full_prompt = {
-            "documents": document_text,
-            "chat_history": chat_history_list
-        }
+        # Retrieve relevant document chunks from Chroma
+        retriever_docs = chroma_db.as_retriever(search_type="similarity_score_threshold", search_kwargs={"k": 5, "score_threshold": 0.3})
+        retriever_mem = chroma_db_mem.as_retriever(search_type="similarity_score_threshold", search_kwargs={"k": 2, "score_threshold": 0.2})
+
+        # Combine the chat history and document context
+        messages = [{"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
+        messages.append({"role": "user", "content": user_input})
+
+        # If the model supports images, include them in the messages
+        if do_send_images:
+            for img_base64 in document_images: messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
 
         try:
             # Start tracking elapsed time
@@ -267,16 +359,6 @@ def chat_with_ai():
             # Call update_waiting_label to set the initial text and start the timer
             update_waiting_label()
 
-            # Send the prompt to the AI using the selected model
-            selected_model = model_var.currentText()
-            messages = [{"role": "system", "content": document_text_intro}] if 'document_text_intro' in globals() else []
-            messages.append({"role": "user", "content": json.dumps(full_prompt)})
-
-            # If the model supports images, include them in the messages
-            if do_send_images:
-                for img_base64 in document_images:
-                    messages.append({"role": "user", "content": f"data:image/png;base64,{img_base64}"})
-
             # Change the button to "Kill Process"
             send_button.setText("Cancel")
             send_button.setStyleSheet("background-color: red; color: white;")
@@ -284,9 +366,19 @@ def chat_with_ai():
             send_button.clicked.connect(kill_ollama_process)  # Connect to kill function
             user_input_box.setEnabled(False)
 
-            # Create and start the worker thread
+            # Create and start the worker thread with LangChain chain
             global ollama_worker
-            ollama_worker = OllamaWorkerThread(selected_model, messages, {"temperature": temperature_scale.value() / 100.0})
+            ollama_worker = OllamaWorkerThread(
+                model_var.currentText(),
+                messages,
+                {"temperature": temperature_scale.value() / 100.0},
+                None,  # Chain built inside thread
+                memory,
+                retriever_docs,
+                retriever_mem,
+                document_images,
+                do_send_images
+            )
             ollama_worker.response_received.connect(handle_ai_response)
             ollama_worker.error_occurred.connect(handle_ai_error)
             ollama_worker.process_killed.connect(reset_ask_ai_button)
@@ -299,18 +391,17 @@ def chat_with_ai():
         # Save the last used model, folder path, temperature, and checkbox state
         save_user_data(
             address_menu.get_current_address().strip(),
-            selected_model,
+            model_var.currentText(),
             temperature_scale.value() / 100.0,
             do_mention_page=do_mention_page,
             do_read_image=do_read_image
         )
 
+
 # Function to handle AI response
 def handle_ai_response(response):
     # Stop the metrics timer
-    if hasattr(update_waiting_label, "timer_started"):
-        metrics_timer.stop()
-        delattr(update_waiting_label, "timer_started")  # Reset the timer flag
+    if hasattr(update_waiting_label, "timer_started"): metrics_timer.stop(); delattr(update_waiting_label, "timer_started")  # Reset the timer flag
     # Append AI response with AI format
     cursor = chat_history.textCursor()
     cursor.movePosition(QTextCursor.MoveOperation.End)  # Move cursor to the end
@@ -335,12 +426,11 @@ def handle_ai_response(response):
     typehere_label.setText(INITIAL_TYPEHERE_TEXT)
     typehere_label.setStyleSheet(INITIAL_TYPEHERE_STYLE)
 
+
 # Function to handle AI errors
 def handle_ai_error(error_message):
     # Stop the metrics timer
-    if hasattr(update_waiting_label, "timer_started"):
-        metrics_timer.stop()
-        delattr(update_waiting_label, "timer_started")  # Reset the timer flag
+    if hasattr(update_waiting_label, "timer_started"): metrics_timer.stop(); delattr(update_waiting_label, "timer_started")  # Reset the timer flag
 
     QMessageBox.critical(window, "Error", f"An error occurred: {error_message}")
     reset_ask_ai_button()
@@ -375,6 +465,7 @@ def reset_ask_ai_button():
     typehere_label.setText("Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)")
     typehere_label.setStyleSheet("color: green;")
 
+
 def update_waiting_label():
     # Set the initial "Waiting..." text and style
     typehere_label.setText("Waiting...")
@@ -388,6 +479,7 @@ def update_waiting_label():
         metrics_timer.start(500)  # Update every 500ms
         update_waiting_label.timer_started = True  # Mark the timer as started
 
+
 def update_waiting_label_metrics():
     # Calculate elapsed time
     elapsed_time = time.time() - start_time
@@ -395,18 +487,15 @@ def update_waiting_label_metrics():
     minutes = int((elapsed_time % 3600) // 60)
     seconds = int(elapsed_time % 60)
     elapsed_time_str = ""
-    if hours > 0:
-        elapsed_time_str += f"{hours}h "
-    if minutes > 0 or hours > 0:  # Show minutes if hours are present
-        elapsed_time_str += f"{minutes}m "
+    if hours > 0: elapsed_time_str += f"{hours}h "
+    if minutes > 0 or hours > 0: elapsed_time_str += f"{minutes}m " # Show minutes if hours are present
     elapsed_time_str += f"{seconds}s"
 
     # Get CPU and GPU utilization
     cpu_usage, gpu_usage = get_system_metrics()
 
-    typehere_label.setText(
-        f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%"
-    )
+    typehere_label.setText(f"Waiting... | Elapsed Time: {elapsed_time_str} | CPU: {cpu_usage}% | GPU: {gpu_usage}%")
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):
@@ -471,7 +560,7 @@ class SettingsDialog(QDialog):
         user_data = load_user_data()
         user_data["tesseract_folder"] = self.tesseract_path_edit.text()  # Get from the edit box
         save_user_data(**user_data)
-        tesseract_folder = self.tesseract_path_edit.text() # Update the global variable
+        tesseract_folder = self.tesseract_path_edit.text()  # Update the global variable
         tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")
         event.accept()
 
@@ -484,15 +573,17 @@ class SettingsDialog(QDialog):
             tesseract_folder = folder  # Update the global variable
             tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update the Tesseract executable path
 
+
 def open_options():
     settings_dialog = SettingsDialog(window)
     result = settings_dialog.exec()  # Use exec() and store the result
 
-    if result == QDialog.DialogCode.Accepted:  # Check if the user clicked "OK" or closed the dialog with "X"
+    if result == QDialog.DialogCode.Accepted: # Check if the user clicked "OK" or closed the dialog with "X"
         global tesseract_folder, tesseract_path  # Declare globals in the function
-        user_data = load_user_data() # Reload user data
+        user_data = load_user_data()  # Reload user data
         tesseract_folder = user_data.get("tesseract_folder", r"C:\Program Files\Tesseract-OCR")  # Get from cache or default
-        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe") # Update tesseract_path
+        tesseract_path = os.path.join(tesseract_folder, "tesseract.exe")  # Update tesseract_path
+
 
 def get_system_metrics():
     # Get CPU utilization
@@ -506,10 +597,10 @@ def get_system_metrics():
         gpu_info = pynvml.nvmlDeviceGetUtilizationRates(handle)
         gpu_usage = gpu_info.gpu  # GPU usage in percentage
         pynvml.nvmlShutdown()
-    except pynvml.NVMLError:
-        pass  # GPU not available or error occurred
+    except pynvml.NVMLError: pass # GPU not available or error occurred
 
     return cpu_usage, gpu_usage
+
 
 # Function to kill the Ollama process
 def kill_ollama_process():
@@ -524,18 +615,17 @@ def kill_ollama_process():
 
     # If the user confirms, kill the process
     if confirm == QMessageBox.StandardButton.Yes:
-        if hasattr(ollama_worker, "stop"):
-            ollama_worker.stop()
+        if hasattr(ollama_worker, "stop"): ollama_worker.stop()
         reset_ask_ai_button()
         # Stop the metrics timer
-        if hasattr(update_waiting_label, "timer_started"):
-            metrics_timer.stop()
-            delattr(update_waiting_label, "timer_started")  # Reset the timer flag
+        if hasattr(update_waiting_label, "timer_started"): metrics_timer.stop(); delattr(update_waiting_label, "timer_started") # Reset the timer flag
+
 
 # Function to clear the chat history box
 def clear_chat_history():
     chat_history.clear()
     chat_history_list.clear()  # Clear the chat history list
+    memory.clear()  # Clear memory as well
 
 
 # Function to set the folder path
@@ -570,6 +660,7 @@ def set_folder_path():
     save_user_data(folder_path, model_var.currentText(), temperature_scale.value() / 100.0)
     enable_ai_interaction()
 
+
 class SpellCheckTextEdit(QTextEdit):
     def __init__(self):
         super().__init__()
@@ -591,7 +682,7 @@ class SpellCheckTextEdit(QTextEdit):
         suggestions = self.highlighter.spell_checker.suggest(word)
 
         if suggestions:
-            for suggestion in suggestions[:5]:  # Show up to 5 suggestions
+            for suggestion in suggestions[:5]: # Show up to 5 suggestions
                 action = menu.addAction(suggestion)
                 action.triggered.connect(lambda checked, s=suggestion: self.replace_word(cursor, s))
 
@@ -599,6 +690,7 @@ class SpellCheckTextEdit(QTextEdit):
 
     def replace_word(self, cursor, new_word):
         cursor.insertText(new_word)
+
 
 class SpellCheckHighlighter(QSyntaxHighlighter):
     def __init__(self, parent):
@@ -617,7 +709,7 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
                 start = text.index(word)
                 self.setFormat(start, len(word), self.error_format)
 
-    def is_valid_word(self, word): # Ensure the word contains only English letters (A-Z, a-z)
+    def is_valid_word(self, word):  # Ensure the word contains only English letters (A-Z, a-z)
         if not all(char in string.ascii_letters for char in word):
             return True  # Ignore words with non-English characters (consider them valid)
         return self.spell_checker.check(word)
@@ -637,7 +729,7 @@ def revise_last():
 
 
 def is_model_multimodal(model_name):
-    MULTIMODAL_MODELS = {"bakllava", "llava", "cogvlm"}  # list of Multimodal LLMs for quick lookup
+    MULTIMODAL_MODELS = {"bakllava", "llava", "cogvlm"} # list of Multimodal LLMs for quick lookup
     try:
         model_name = model_name.lower()  # Normalize input
         # Check if model name starts with a known multimodal model name
@@ -671,17 +763,19 @@ def update_model_description():
 
 def on_toggle(var_name):
     """Update global variables dynamically based on checkbox state."""
-    globals()[var_name] = globals()[f"{var_name}_var"].isChecked() # Access the QCheckBox variable
+    globals()[var_name] = globals()[f"{var_name}_var"].isChecked()  # Access the QCheckBox variable
     # print(f"{var_name}: {globals()[var_name]}")  # Debugging output
 
-# -------------------------------------------------
 
+# -------------------------------------------------
 
 
 previous_message = ""
 do_revise = False
 do_send_images = False  # Initialize the boolean variable
 ollama_worker = None
+memory = CustomChatMemory()  # Initialize memory
+WEB_SEARCH_ENABLED = False  # Toggle for web search
 
 # Define the initial text and style for typehere_label
 INITIAL_TYPEHERE_TEXT = "Chat with A.I. here: (Ctrl+↵ to send | Ctrl+^ to revise previous)"
@@ -716,7 +810,6 @@ main_layout.addLayout(top_layout)
 # Fetch installed Ollama models
 installed_models = fetch_installed_models()
 
-
 read_button_timer = QTimer()
 read_button_timer.timeout.connect(lambda: animate_button(read_button))
 
@@ -737,7 +830,6 @@ model_var.setCurrentText(last_model if last_model in installed_models else (inst
 
 model_var.currentIndexChanged.connect(update_model_description)
 
-
 # Adding the custom AddressMenu
 address_menu = AddressMenu()
 top_layout.addWidget(address_menu)
@@ -750,7 +842,7 @@ top_layout.addWidget(browse_button)
 # Read button
 read_button = QPushButton("Read Documents")
 read_button.clicked.connect(set_folder_path)
-#read_button.clicked.connect(lambda: (read_button.setText("Reading..."),set_folder_path()))
+# read_button.clicked.connect(lambda: (read_button.setText("Reading..."),set_folder_path()))
 top_layout.addWidget(read_button)
 
 # Chat history display
@@ -811,11 +903,13 @@ copy_button.clicked.connect(copy_to_clipboard)
 temperature_label = QLabel("Innovation Factor:")
 temperature_label.setStyleSheet("color: white;")
 
+
 # Function to update the temperature label and save the value
 def update_temperature_label(value):
     temperature_value = value / 10.0  # Convert slider value to 0.1 increments
     temperature_display_label.setText(f"{temperature_value:.1f}")
     save_user_data(temperature=temperature_value)  # Save the temperature value to cache
+
 
 def disable_ai_interaction():
     """Disables AI interaction elements (Ask AI button and user input box)."""
@@ -825,6 +919,7 @@ def disable_ai_interaction():
     """Starts the blinking animation on the Read Documents button."""
     read_button_timer.start(500)
 
+
 def enable_ai_interaction():
     """Enables AI interaction elements."""
     read_button.setText("Read Documents")
@@ -833,13 +928,15 @@ def enable_ai_interaction():
     user_input_box.setPlaceholderText("")  # Remove placeholder text
     """Stops the blinking animation on the Read Documents button."""
     read_button_timer.stop()
-    read_button.setStyleSheet("") # Reset style
+    read_button.setStyleSheet("")  # Reset style
     read_button.setText("Read Documents")
 
+
 def animate_button(button):
-    alpha = int((1 +  math.sin(time.time() * 2)) * 127.5)  # Sinusoidal alpha
-    color = QColor(255, 255, 255, alpha) # White with varying alpha
+    alpha = int((1 + math.sin(time.time() * 2)) * 127.5)  # Sinusoidal alpha
+    color = QColor(255, 255, 255, alpha)  # White with varying alpha
     button.setStyleSheet(f"background-color: rgba({color.red()},{color.green()},{color.blue()},{color.alpha()});")
+
 
 # Label to display the current temperature value
 temperature_display_label = QLabel(f"{last_temperature:.1f}")
@@ -882,8 +979,8 @@ model_description_label = QLabel("Select a model")
 model_description_label.setStyleSheet("color: gray;")
 top_layout.addWidget(model_description_label)
 
-#spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-#top_layout.addItem(spacer)
+# spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+# top_layout.addItem(spacer)
 top_layout.addWidget(options_button)
 
 update_model_description()
@@ -902,13 +999,11 @@ user_input_box.shortcut.activated.connect(chat_with_ai)
 
 # Set window size and position (optional - adjust as needed)
 window.setGeometry(100, 100, 800, 600)  # Example size
-disable_ai_interaction() # for initial app start
+disable_ai_interaction()  # for initial app start
 
 custom_font = QFont(QFontDatabase.applicationFontFamilies(font_id)[0]) if (font_id := QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "modules", "Sahel.ttf"))) != -1 else QFont()
 chat_history.setFont(custom_font)
 user_input_box.setFont(custom_font)
-
-
 
 window.show()
 window.setWindowTitle("A.I. Document Analyzer")

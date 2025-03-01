@@ -54,8 +54,8 @@ If you are an advanced user, you can Run (or build) the APP yourself, especially
 
 
 2-Set the environment:
-cd <project-folder> (or just open cmd in project folder)
-conda env create -f environment.yml
+cd <project-folder> (or just open cmd in project folder). Enter in CMD (do this every time the code is updated)
+		conda env update --name da-env --file environment.yml --prune
 
 3-Run the APP
 get the latest version of the code from GitHub: (https://github.com/mhdsedighi/DOC-Analyzer/archive/refs/heads/master.zip)

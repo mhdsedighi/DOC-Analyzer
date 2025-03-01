@@ -2,7 +2,7 @@ import os
 from docx import Document
 from openpyxl import load_workbook
 from pptx import Presentation
-import win32com.client
+import win32com.client ,tempfile
 from io import BytesIO
 import base64
 from modules.pdf_tools import extract_content_from_pdf

@@ -45,42 +45,6 @@ def is_file_in_chroma(file_path):
     logger.info(f"Checking if {filename} is in Chroma: {len(existing_docs['documents']) > 0}")
     return len(existing_docs["documents"]) > 0
 
-
-# Extract title and author from text chunks using NLTK
-def extract_metadata_with_nltk(chunks):
-
-    title = "Unknown"
-    author = "Unknown"
-    # # Combine chunks for analysis (limited to first few for efficiency)
-    # text_to_analyze = " ".join(chunks[:3])  # Use first 3 chunks
-    # # Sentence tokenization
-    # sentences = sent_tokenize(text_to_analyze)
-    # # Try to find title (first sentence or capitalized sequence)
-    # if sentences:
-    #     first_sentence = sentences[0].strip()
-    #     if len(first_sentence.split()) > 2 and first_sentence[0].isupper():
-    #         title = first_sentence
-    #     else:
-    #         # Look for capitalized phrases
-    #         words = word_tokenize(text_to_analyze)
-    #         pos_tags = pos_tag(words)
-    #         capitalized = [word for word, pos in pos_tags if word[0].isupper() and pos.startswith('NN')]
-    #         if capitalized:
-    #             title = " ".join(capitalized[:3])  # Take first 3 capitalized nouns
-    #
-    # # Try to find author (look for "by" or common author patterns)
-    # for sentence in sentences[:5]:  # Check first 5 sentences
-    #     words = word_tokenize(sentence.lower())
-    #     if "by" in words:
-    #         by_idx = words.index("by")
-    #         potential_author = " ".join(word_tokenize(sentence)[by_idx + 1:by_idx + 4])
-    #         if potential_author and any(c.isalpha() for c in potential_author):
-    #             author = potential_author.title()
-    #             break
-
-    return title, author
-
-
 # Function to extract text from a document based on its file type and store in Chroma
 def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
     if chroma_db is None:
@@ -126,12 +90,8 @@ def extract_content_from_file(file_path, do_read_image, tesseract_path=None):
         full_text = "\n".join(texts)
         chunks = text_splitter.split_text(full_text)
         if chunks:
-            # Extract metadata using NLTK from chunks
-            title, author = extract_metadata_with_nltk(chunks)
-            # print("title is"+title)
-            # print("author is"+author)
             # Update metadata with extracted title and author
-            chunk_docs = [Document(page_content=chunk, metadata={**metadatas[i % len(metadatas)], "title": title, "author": author}) for i, chunk in enumerate(chunks)]
+            chunk_docs = [Document(page_content=chunk, metadata=metadatas[i % len(metadatas)]) for i, chunk in enumerate(chunks)]
             filtered_chunks = filter_complex_metadata(chunk_docs)
             filtered_texts = [doc.page_content for doc in filtered_chunks]
             filtered_metadatas = [doc.metadata for doc in filtered_chunks]
